@@ -1,14 +1,8 @@
 package io.github.chains_project.maven_lockfile.graph;
 
 import com.google.gson.annotations.Expose;
-import io.github.chains_project.maven_lockfile.data.ArtifactId;
-import io.github.chains_project.maven_lockfile.data.ArtifactType;
-import io.github.chains_project.maven_lockfile.data.Classifier;
-import io.github.chains_project.maven_lockfile.data.GroupId;
-import io.github.chains_project.maven_lockfile.data.MavenScope;
-import io.github.chains_project.maven_lockfile.data.RepositoryId;
-import io.github.chains_project.maven_lockfile.data.ResolvedUrl;
-import io.github.chains_project.maven_lockfile.data.VersionNumber;
+import io.github.chains_project.maven_lockfile.data.*;
+
 import java.util.*;
 
 /**
@@ -63,54 +57,63 @@ public class DependencyNode implements Comparable<DependencyNode> {
         this.resolved = resolved;
         this.repositoryId = repositoryId;
     }
+
     /**
      * @return the artifactId
      */
     public ArtifactId getArtifactId() {
         return artifactId;
     }
+
     /**
      * @return the groupId
      */
     public GroupId getGroupId() {
         return groupId;
     }
+
     /**
      * @return the parent
      */
     public NodeId getParent() {
         return parent;
     }
+
     /**
      * @return the version
      */
     public VersionNumber getVersion() {
         return version;
     }
+
     /**
      * @return the classifier or null if not present
      */
     public Classifier getClassifier() {
         return classifier;
     }
+
     /**
      * @return the artifact type or null if default (jar)
      */
     public ArtifactType getType() {
         return type;
     }
+
     /**
      * @return the scope
      */
     public MavenScope getScope() {
         return scope;
     }
+
     /**
      * @return the resolved url.
      */
     public ResolvedUrl getResolved() {
         return resolved;
     }
+
     /**
      * @return the repository id.
      */
@@ -143,18 +146,21 @@ public class DependencyNode implements Comparable<DependencyNode> {
     public String getChecksum() {
         return checksum;
     }
+
     /**
      * @return the checksumAlgorithm
      */
     public String getChecksumAlgorithm() {
         return checksumAlgorithm;
     }
+
     /**
      * @param baseVersion the baseVersion to set
      */
     public void setSelectedVersion(String baseVersion) {
         this.selectedVersion = baseVersion;
     }
+
     /**
      * @return the baseVersion
      */
@@ -174,6 +180,10 @@ public class DependencyNode implements Comparable<DependencyNode> {
      */
     public boolean isIncluded() {
         return included;
+    }
+
+    public NodeId getNodeId() {
+        return id;
     }
 
     @Override

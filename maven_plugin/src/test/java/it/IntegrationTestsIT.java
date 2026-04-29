@@ -856,6 +856,101 @@ public class IntegrationTestsIT {
     }
 
     @MavenTest
+    public void surefirePluginResolver(MavenExecutionResult result) throws Exception {
+        // contract: when maven-surefire-plugin is present and junit-jupiter is declared as a test
+        // dependency, SurefirePluginResolver must inject surefire-junit-platform into the
+        // surefire plugin's recorded dependencies so the JUnit Platform provider is available
+        // for offline builds.
+        System.out.println("Running 'surefirePluginResolver' integration test.");
+        assertThat(result).isSuccessful();
+        Path lockFilePath = findFile(result, "lockfile.json");
+        assertThat(lockFilePath).exists();
+        var lockFile = LockFile.readLockFile(lockFilePath);
+
+        var surefirePlugin = lockFile.getMavenPlugins().stream()
+                .filter(p -> "maven-surefire-plugin".equals(p.getArtifactId().getValue()))
+                .findFirst();
+        assertThat(surefirePlugin).isPresent();
+
+        assertThat(surefirePlugin.get().getDependencies())
+                .as("maven-surefire-plugin should contain surefire-junit-platform injected by SurefirePluginResolver")
+                .anyMatch(dep -> "surefire-junit-platform".equals(dep.getArtifactId().getValue())
+                        && "org.apache.maven.surefire".equals(dep.getGroupId().getValue()));
+    }
+
+    @MavenTest
+    public void mavenCompilerPluginResolver(MavenExecutionResult result) throws Exception {
+        // contract: when maven-compiler-plugin has annotationProcessorPaths configured,
+        // MavenCompilerPluginResolver must inject those processors as plugin dependencies so
+        // the compiler plugin's recorded dependency set includes them (and their transitive
+        // closure) in the lockfile — even though they do not appear in the project's own
+        // dependency tree.
+        System.out.println("Running 'mavenCompilerPluginResolver' integration test.");
+        assertThat(result).isSuccessful();
+        Path lockFilePath = findFile(result, "lockfile.json");
+        assertThat(lockFilePath).exists();
+        var lockFile = LockFile.readLockFile(lockFilePath);
+
+        var compilerPlugin = lockFile.getMavenPlugins().stream()
+                .filter(p -> "maven-compiler-plugin".equals(p.getArtifactId().getValue()))
+                .findFirst();
+        assertThat(compilerPlugin).isPresent();
+
+        assertThat(compilerPlugin.get().getDependencies())
+                .as("maven-compiler-plugin should include lombok injected from annotationProcessorPaths")
+                .anyMatch(dep -> "lombok".equals(dep.getArtifactId().getValue())
+                        && "org.projectlombok".equals(dep.getGroupId().getValue()));
+    }
+
+    @MavenTest
+    public void quarkusDeploymentResolver(MavenExecutionResult result) throws Exception {
+        // contract: when quarkus-maven-plugin is absent, QuarkusDeploymentResolver must not be
+        // applicable (isApplicable returns false) and must not interfere with lockfile generation.
+        // The lockfile is generated successfully with the expected dependency set.
+        System.out.println("Running 'quarkusDeploymentResolver' integration test.");
+        assertThat(result).isSuccessful();
+        Path lockFilePath = findFile(result, "lockfile.json");
+        assertThat(lockFilePath).exists();
+        var lockFile = LockFile.readLockFile(lockFilePath);
+
+        // No Quarkus plugin injected into the plugins list
+        assertThat(lockFile.getMavenPlugins())
+                .as("lockfile should not contain any quarkus plugins when project is not a Quarkus project")
+                .noneMatch(p -> p.getGroupId().getValue().contains("quarkus")
+                        || p.getArtifactId().getValue().contains("quarkus"));
+
+        // No Quarkus artifacts injected into the dependency tree
+        assertThat(lockFile.getDependencies().stream()
+                        .flatMap(v -> flattenDependencies(v).stream()))
+                .as("lockfile dependencies should not contain any quarkus artifacts")
+                .noneMatch(dep -> dep.getGroupId().getValue().contains("quarkus")
+                        || dep.getArtifactId().getValue().contains("quarkus"));
+    }
+
+    @MavenTest
+    public void protobufMavenPluginResolver(MavenExecutionResult result) throws Exception {
+        // contract: when protobuf-maven-plugin is absent, ProtobufMavenPluginResolver must not be
+        // applicable (isApplicable returns false) and must not interfere with lockfile generation.
+        // The lockfile is generated successfully with the expected dependency set.
+        System.out.println("Running 'protobufMavenPluginResolver' integration test.");
+        assertThat(result).isSuccessful();
+        Path lockFilePath = findFile(result, "lockfile.json");
+        assertThat(lockFilePath).exists();
+        var lockFile = LockFile.readLockFile(lockFilePath);
+
+        assertThat(lockFile.getDependencies())
+                .as("lockfile dependencies should contain spoon-core (resolver must not interfere)")
+                .anyMatch(dep -> "spoon-core".equals(dep.getArtifactId().getValue()));
+
+        // No protobuf or protoc artifacts injected
+        assertThat(lockFile.getDependencies().stream()
+                        .flatMap(v -> flattenDependencies(v).stream()))
+                .as("lockfile dependencies should not contain any protobuf artifacts")
+                .noneMatch(dep -> dep.getGroupId().getValue().contains("protobuf")
+                        || "protoc".equals(dep.getArtifactId().getValue()));
+    }
+
+    @MavenTest
     public void bomPomWithParent(MavenExecutionResult result) throws Exception {
         // contract: if a BOM POM has a parent POM, it should be resolved in the lockfile
         System.out.println("Running 'bomPomWithParent' integration test.");

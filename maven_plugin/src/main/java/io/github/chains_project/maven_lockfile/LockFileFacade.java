@@ -8,7 +8,12 @@ import io.github.chains_project.maven_lockfile.data.*;
 import io.github.chains_project.maven_lockfile.graph.DependencyGraph;
 import io.github.chains_project.maven_lockfile.reporting.PluginLogManager;
 import io.github.chains_project.maven_lockfile.resolvers.BomResolver;
+import io.github.chains_project.maven_lockfile.resolvers.MavenCompilerPluginResolver;
 import io.github.chains_project.maven_lockfile.resolvers.ProjectBuilder;
+import io.github.chains_project.maven_lockfile.resolvers.ProtobufMavenPluginResolver;
+import io.github.chains_project.maven_lockfile.resolvers.QuarkusDeploymentResolver;
+import io.github.chains_project.maven_lockfile.resolvers.SpecialPluginResolver;
+import io.github.chains_project.maven_lockfile.resolvers.SurefirePluginResolver;
 import java.nio.file.Path;
 import java.util.*;
 import java.util.stream.Collectors;
@@ -41,6 +46,17 @@ import org.eclipse.aether.util.artifact.JavaScopes;
  *
  */
 public class LockFileFacade {
+
+    /**
+     * Registry of all special plugin resolvers. Add new implementations here to extend
+     * lockfile generation to new build plugins without touching any other code.
+     */
+    private static final List<SpecialPluginResolver> PLUGIN_RESOLVERS = List.of(
+            new QuarkusDeploymentResolver(),
+            new ProtobufMavenPluginResolver(),
+            new SurefirePluginResolver(),
+            new MavenCompilerPluginResolver());
+
     /**
      * This visitor is used to traverse the dependency graph and add the edges to the graph.
      */
@@ -120,6 +136,12 @@ public class LockFileFacade {
                 metadata.getConfig().isReduced());
 
         var roots = dependencyGraph.getRoots();
+
+        // Force-resolve annotation processor artifacts (and other forceDependencyPopulation resolvers)
+        // as standalone roots so their full unmediated transitive closure is captured.
+        roots.addAll(resolveSpecialPluginDependencies(
+                project, session, dependencyCollectorBuilder, checksumCalculator));
+
         var pom = constructRecursivePom(project, session, checksumCalculator);
 
         resolveParentsAndBomsForDependencies(dependencyGraph, session, project, checksumCalculator);
@@ -298,7 +320,7 @@ public class LockFileFacade {
             AbstractChecksumCalculator checksumCalculator) {
         Set<MavenPlugin> plugins = new TreeSet<>();
 
-        // Build a map of user-declared plugin dependencies
+        // Build a map of user-declared plugin dependencies (mutable lists so resolvers can inject)
         // Key: groupId:artifactId, Value: list of user-declared dependencies
         Map<String, List<Dependency>> userPluginDependencies = new HashMap<>();
         if (project.getBuild() != null && project.getBuild().getPlugins() != null) {
@@ -306,10 +328,41 @@ public class LockFileFacade {
                 String key = plugin.getGroupId() + ":" + plugin.getArtifactId();
                 if (plugin.getDependencies() != null
                         && !plugin.getDependencies().isEmpty()) {
-                    userPluginDependencies.put(key, plugin.getDependencies());
+                    userPluginDependencies.put(key, new ArrayList<>(plugin.getDependencies()));
                 }
             }
         }
+
+        // Run all registered special plugin resolvers to inject additional plugin dependencies
+        for (SpecialPluginResolver resolver : PLUGIN_RESOLVERS) {
+            if (!resolver.isApplicable(project)) continue;
+            PluginLogManager.getLog()
+                    .info(resolver.getDisplayName() + " detected — running special plugin resolver");
+            SpecialPluginResolver.DiscoveryResult result = resolver.discover(project, session);
+            if (result.isEmpty()) continue;
+            for (Map.Entry<String, List<Dependency>> entry :
+                    result.getPluginDependencies().entrySet()) {
+                String pluginKey = entry.getKey();
+                List<Dependency> existing =
+                        userPluginDependencies.computeIfAbsent(pluginKey, k -> new ArrayList<>());
+                Set<String> existingGas = new HashSet<>();
+                for (Dependency d : existing) existingGas.add(d.getGroupId() + ":" + d.getArtifactId());
+                for (Dependency dep : entry.getValue()) {
+                    if (existingGas.add(dep.getGroupId() + ":" + dep.getArtifactId())) {
+                        existing.add(dep);
+                    }
+                }
+            }
+            if (!result.getPlatformArtifactSpecs().isEmpty()) {
+                PluginLogManager.getLog()
+                        .warn(String.format(
+                                "%s: discovered %d platform artifact spec(s)"
+                                        + " — platform artifact resolution not yet supported",
+                                resolver.getDisplayName(),
+                                result.getPlatformArtifactSpecs().size()));
+            }
+        }
+
         ProjectBuilder projectBuilder = new ProjectBuilder(session, project.getPluginArtifactRepositories());
 
         for (Artifact pluginArtifact : project.getPluginArtifacts()) {
@@ -572,6 +625,76 @@ public class LockFileFacade {
         }
 
         return lastPom;
+    }
+
+    /**
+     * For every {@link SpecialPluginResolver} that returns {@code true} from
+     * {@link SpecialPluginResolver#forceDependencyPopulation()}, resolves each discovered
+     * dependency as a <em>standalone root</em> — bypassing Maven's plugin-context conflict
+     * mediation so the full, unmediated transitive closure of each artifact is captured.
+     *
+     * <p>Needed for annotation processors declared in {@code <annotationProcessorPaths>} whose
+     * classloader is independent of the project's dependency graph — every artifact must be
+     * present regardless of the project-level conflict winner.
+     */
+    private static Set<io.github.chains_project.maven_lockfile.graph.DependencyNode>
+            resolveSpecialPluginDependencies(
+                    MavenProject project,
+                    MavenSession session,
+                    DependencyCollectorBuilder dependencyCollectorBuilder,
+                    AbstractChecksumCalculator checksumCalculator) {
+        Set<io.github.chains_project.maven_lockfile.graph.DependencyNode> allRoots = new TreeSet<>(
+                Comparator.comparing(
+                        io.github.chains_project.maven_lockfile.graph.DependencyNode::getComparatorString));
+        ProjectBuilder projectBuilder = new ProjectBuilder(session, project.getPluginArtifactRepositories());
+
+        for (SpecialPluginResolver resolver : PLUGIN_RESOLVERS) {
+            if (!resolver.isApplicable(project)) continue;
+            if (!resolver.forceDependencyPopulation()) continue;
+
+            SpecialPluginResolver.DiscoveryResult result = resolver.discover(project, session);
+            if (result.isEmpty()) continue;
+
+            PluginLogManager.getLog()
+                    .info(String.format(
+                            "%s: force-resolving discovered artifacts as standalone roots",
+                            resolver.getDisplayName()));
+
+            for (List<Dependency> deps : result.getPluginDependencies().values()) {
+                for (Dependency dep : deps) {
+                    Optional<MavenProject> depProjectOpt = projectBuilder.buildFromGav(
+                            dep.getGroupId(), dep.getArtifactId(), dep.getVersion());
+                    if (depProjectOpt.isEmpty()) {
+                        PluginLogManager.getLog()
+                                .warn(String.format(
+                                        "%s: could not build project for %s:%s:%s — skipping",
+                                        resolver.getDisplayName(),
+                                        dep.getGroupId(),
+                                        dep.getArtifactId(),
+                                        dep.getVersion()));
+                        continue;
+                    }
+                    Set<io.github.chains_project.maven_lockfile.graph.DependencyNode> nodes =
+                            resolveComponentDependencies(
+                                    depProjectOpt.get(),
+                                    session,
+                                    project.getPluginArtifactRepositories(),
+                                    dependencyCollectorBuilder,
+                                    checksumCalculator,
+                                    Collections.emptyList());
+                    allRoots.addAll(nodes);
+                    PluginLogManager.getLog()
+                            .debug(String.format(
+                                    "%s: added %d node(s) for %s:%s:%s",
+                                    resolver.getDisplayName(),
+                                    nodes.size(),
+                                    dep.getGroupId(),
+                                    dep.getArtifactId(),
+                                    dep.getVersion()));
+                }
+            }
+        }
+        return allRoots;
     }
 
     /**

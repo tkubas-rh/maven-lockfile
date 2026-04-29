@@ -3,115 +3,117 @@ package io.github.chains_project.maven_lockfile.resolvers;
 import io.github.chains_project.maven_lockfile.reporting.PluginLogManager;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 import org.apache.maven.execution.MavenSession;
 import org.apache.maven.model.Dependency;
-import org.apache.maven.model.Plugin;
 import org.apache.maven.project.MavenProject;
 
 /**
- * Discovers the JUnit Platform provider ({@code surefire-junit-platform}) that
- * {@code maven-surefire-plugin} loads dynamically at runtime when JUnit 5 is detected on the
- * test classpath.
+ * Discovers the test framework provider that {@code maven-surefire-plugin} loads dynamically at
+ * runtime based on which testing library is declared in the project's test dependencies.
  *
- * <p>When surefire finds {@code junit-jupiter} (or any {@code junit-platform-*} artifact) among
- * the test dependencies, it resolves {@code org.apache.maven.surefire:surefire-junit-platform}
- * at the same version as the plugin itself — along with its transitive dependencies such as
- * {@code junit-platform-launcher} and {@code junit-platform-engine}. None of these appear in
- * the project's declared dependencies, so they would be missing from the lockfile without this
- * resolver.
+ * <p>Surefire selects a provider jar at test-execution time by inspecting the test classpath for
+ * known framework marker groupIds, then resolves the matching provider at its own version. None of
+ * these provider jars appear in the project's declared dependencies, so they would be missing from
+ * the lockfile without this resolver.
  *
- * <p>The resolver injects {@code surefire-junit-platform} as a dependency of
- * {@code maven-surefire-plugin}, causing the existing plugin dependency resolution to capture
- * its full transitive closure.
+ * <p>The mapping from test-framework marker groupId to provider artifactId is defined in
+ * {@link #FRAMEWORK_PROVIDER_TABLE}. It mirrors the provider-selection logic inside
+ * {@code AbstractSurefireMojo} and covers all providers shipped under
+ * {@code org.apache.maven.surefire:surefire-providers}. Adding support for a new provider
+ * requires only a new entry in that table — no other code changes.
  */
 public class SurefirePluginResolver extends SpecialPluginResolver {
 
     private static final String SUREFIRE_GROUP_ID = "org.apache.maven.surefire";
     private static final String SUREFIRE_ARTIFACT_ID = "maven-surefire-plugin";
-    private static final String SUREFIRE_PLATFORM_PROVIDER = "surefire-junit-platform";
     private static final String SUREFIRE_PLUGIN_KEY =
             "org.apache.maven.plugins:" + SUREFIRE_ARTIFACT_ID;
+
+    /**
+     * Maps one or more test-framework marker groupIds to the Surefire provider artifactId that
+     * handles them. Entries are evaluated in order; the first match wins.
+     *
+     * <p>The provider artifactIds here are the module names under
+     * {@code org.apache.maven.surefire:surefire-providers}, which can be verified by reading that
+     * POM's {@code <modules>} list at the detected Surefire version.
+     */
+    private static final List<Map.Entry<List<String>, String>> FRAMEWORK_PROVIDER_TABLE = List.of(
+            // JUnit 5 — jupiter API or platform API on test classpath
+            Map.entry(List.of("org.junit.jupiter", "org.junit.platform"), "surefire-junit-platform"),
+            // TestNG
+            Map.entry(List.of("org.testng"), "surefire-testng"),
+            // JUnit 4 (junit:junit) — use the JUnit 4.7+ provider which supports @RunWith
+            Map.entry(List.of("junit"), "surefire-junit47"),
+            // JUnit 3 legacy
+            Map.entry(List.of("junit-addons"), "surefire-junit3"));
 
     public SurefirePluginResolver() {}
 
     @Override
     public boolean isApplicable(MavenProject project) {
-        return hasSurefirePlugin(project) && hasJUnit5OnTestClasspath(project);
+        return findPlugin(project, SUREFIRE_ARTIFACT_ID).isPresent()
+                && detectProvider(project) != null;
     }
 
     @Override
     public String getDisplayName() {
-        return "maven-surefire-plugin (JUnit Platform)";
+        return "maven-surefire-plugin (provider auto-detection)";
     }
 
     @Override
     public DiscoveryResult discover(MavenProject project, MavenSession session) {
-        String surefireVersion = getSurefireVersion(project);
-        if (surefireVersion == null) {
-            PluginLogManager.getLog().warn(
-                    "SurefirePluginResolver: could not determine surefire version — skipping");
-            return DiscoveryResult.empty();
-        }
+        String surefireVersion = findPlugin(project, SUREFIRE_ARTIFACT_ID)
+                .map(p -> resolveProperty(p.getVersion(), project))
+                .orElse(null);
 
-        // Resolve any property placeholder (e.g. ${maven-surefire-plugin.version})
-        surefireVersion = resolveProperty(surefireVersion, project);
         if (surefireVersion == null || surefireVersion.startsWith("${")) {
             PluginLogManager.getLog().warn(
                     "SurefirePluginResolver: could not resolve surefire version — skipping");
             return DiscoveryResult.empty();
         }
 
-        Dependency platformProvider = new Dependency();
-        platformProvider.setGroupId(SUREFIRE_GROUP_ID);
-        platformProvider.setArtifactId(SUREFIRE_PLATFORM_PROVIDER);
-        platformProvider.setVersion(surefireVersion);
+        String providerArtifactId = detectProvider(project);
+        if (providerArtifactId == null) {
+            return DiscoveryResult.empty();
+        }
 
-        List<Dependency> deps = new ArrayList<>();
-        deps.add(platformProvider);
+        Dependency provider = new Dependency();
+        provider.setGroupId(SUREFIRE_GROUP_ID);
+        provider.setArtifactId(providerArtifactId);
+        provider.setVersion(surefireVersion);
 
         PluginLogManager.getLog().info(String.format(
                 "SurefirePluginResolver: injecting %s:%s:%s into %s",
-                SUREFIRE_GROUP_ID, SUREFIRE_PLATFORM_PROVIDER, surefireVersion,
-                SUREFIRE_PLUGIN_KEY));
+                SUREFIRE_GROUP_ID, providerArtifactId, surefireVersion, SUREFIRE_PLUGIN_KEY));
 
+        List<Dependency> deps = new ArrayList<>();
+        deps.add(provider);
         return DiscoveryResult.ofPluginDependencies(SUREFIRE_PLUGIN_KEY, deps);
     }
 
-    private static boolean hasSurefirePlugin(MavenProject project) {
-        return project.getBuildPlugins().stream()
-                .anyMatch(p -> SUREFIRE_ARTIFACT_ID.equals(p.getArtifactId()));
-    }
-
     /**
-     * Returns {@code true} if any JUnit 5 artifact is declared as a test dependency.
-     * Surefire uses this same detection to decide whether to load the JUnit Platform provider.
+     * Scans the project's declared test dependencies and returns the provider artifactId for the
+     * first matching entry in {@link #FRAMEWORK_PROVIDER_TABLE}, or {@code null} if no known
+     * framework is present.
      *
      * <p>Uses declared dependencies (from the POM model) rather than resolved artifacts so that
      * this check works regardless of the mojo's {@code requiresDependencyResolution} scope —
      * test-scoped artifacts are not in {@code project.getArtifacts()} when the mojo only
      * requests compile-scope resolution.
      */
-    private static boolean hasJUnit5OnTestClasspath(MavenProject project) {
-        return project.getDependencies().stream().anyMatch(d ->
-                ("org.junit.jupiter".equals(d.getGroupId())
-                        || "org.junit.platform".equals(d.getGroupId()))
-                        && "test".equals(d.getScope()));
-    }
+    private static String detectProvider(MavenProject project) {
+        List<String> testGroupIds = project.getDependencies().stream()
+                .filter(d -> "test".equals(d.getScope()))
+                .map(d -> d.getGroupId())
+                .collect(Collectors.toList());
 
-    private static String getSurefireVersion(MavenProject project) {
-        return project.getBuildPlugins().stream()
-                .filter(p -> SUREFIRE_ARTIFACT_ID.equals(p.getArtifactId()))
-                .map(Plugin::getVersion)
-                .findFirst()
-                .orElse(null);
-    }
-
-    private static String resolveProperty(String value, MavenProject project) {
-        if (value != null && value.startsWith("${") && value.endsWith("}")) {
-            String key = value.substring(2, value.length() - 1);
-            String resolved = project.getProperties().getProperty(key);
-            return resolved != null ? resolved.trim() : value;
+        for (Map.Entry<List<String>, String> entry : FRAMEWORK_PROVIDER_TABLE) {
+            if (testGroupIds.stream().anyMatch(entry.getKey()::contains)) {
+                return entry.getValue();
+            }
         }
-        return value;
+        return null;
     }
 }

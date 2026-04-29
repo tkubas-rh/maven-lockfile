@@ -3,9 +3,12 @@ package io.github.chains_project.maven_lockfile.resolvers;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import org.apache.maven.execution.MavenSession;
 import org.apache.maven.model.Dependency;
+import org.apache.maven.model.Plugin;
 import org.apache.maven.project.MavenProject;
+import org.codehaus.plexus.util.xml.Xpp3Dom;
 
 /**
  * Base class for resolvers that discover artifacts dynamically loaded by specific Maven build
@@ -59,6 +62,59 @@ public abstract class SpecialPluginResolver {
      */
     public boolean forceDependencyPopulation() {
         return false;
+    }
+
+    // -------------------------------------------------------------------------
+    // Shared utilities for subclasses
+    // -------------------------------------------------------------------------
+
+    /**
+     * Returns the first build plugin matching the given {@code artifactId}, or empty.
+     * Use this when the groupId is well-known enough to be omitted (e.g. org.apache.maven.plugins
+     * are always on the default group prefix list and uniquely identified by artifactId alone).
+     */
+    protected static Optional<Plugin> findPlugin(MavenProject project, String artifactId) {
+        return project.getBuildPlugins().stream()
+                .filter(p -> artifactId.equals(p.getArtifactId()))
+                .findFirst();
+    }
+
+    /**
+     * Returns the first build plugin matching both {@code groupId} and {@code artifactId},
+     * or empty. Use this when multiple plugins from different groups share the same artifactId.
+     */
+    protected static Optional<Plugin> findPlugin(
+            MavenProject project, String groupId, String artifactId) {
+        return project.getBuildPlugins().stream()
+                .filter(p -> groupId.equals(p.getGroupId()) && artifactId.equals(p.getArtifactId()))
+                .findFirst();
+    }
+
+    /**
+     * Resolves a Maven property placeholder ({@code ${property.name}}) against the project's
+     * effective properties. Returns the value unchanged if it is not a placeholder or the
+     * property cannot be found.
+     */
+    protected static String resolveProperty(String value, MavenProject project) {
+        if (value == null) return null;
+        value = value.trim();
+        if (value.startsWith("${") && value.endsWith("}")) {
+            String key = value.substring(2, value.length() - 1);
+            String resolved = project.getProperties().getProperty(key);
+            if (resolved != null) return resolved.trim();
+        }
+        return value;
+    }
+
+    /**
+     * Reads a child element's text value from an {@link Xpp3Dom} node and resolves any
+     * {@code ${property}} placeholder. Returns {@code null} if the child is absent or has
+     * no value.
+     */
+    protected static String childValue(Xpp3Dom parent, String childName, MavenProject project) {
+        Xpp3Dom child = parent.getChild(childName);
+        if (child == null || child.getValue() == null) return null;
+        return resolveProperty(child.getValue(), project);
     }
 
     /**

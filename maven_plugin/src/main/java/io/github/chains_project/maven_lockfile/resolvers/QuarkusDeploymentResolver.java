@@ -60,8 +60,7 @@ public class QuarkusDeploymentResolver extends SpecialPluginResolver {
 
     @Override
     public boolean isApplicable(MavenProject project) {
-        return project.getBuildPlugins().stream()
-                .anyMatch(p -> QUARKUS_PLUGIN_ARTIFACT_ID.equals(p.getArtifactId()));
+        return findPlugin(project, QUARKUS_PLUGIN_ARTIFACT_ID).isPresent();
     }
 
     @Override
@@ -75,10 +74,8 @@ public class QuarkusDeploymentResolver extends SpecialPluginResolver {
         if (deps.isEmpty()) {
             return DiscoveryResult.empty();
         }
-        String pluginKey = project.getBuildPlugins().stream()
-                .filter(p -> QUARKUS_PLUGIN_ARTIFACT_ID.equals(p.getArtifactId()))
+        String pluginKey = findPlugin(project, QUARKUS_PLUGIN_ARTIFACT_ID)
                 .map(p -> p.getGroupId() + ":" + p.getArtifactId())
-                .findFirst()
                 .orElse("io.quarkus:" + QUARKUS_PLUGIN_ARTIFACT_ID);
         return DiscoveryResult.ofPluginDependencies(pluginKey, deps);
     }

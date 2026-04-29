@@ -8,9 +8,8 @@ import io.github.chains_project.maven_lockfile.data.*;
 import io.github.chains_project.maven_lockfile.graph.DependencyGraph;
 import io.github.chains_project.maven_lockfile.reporting.PluginLogManager;
 import io.github.chains_project.maven_lockfile.resolvers.BomResolver;
-import io.github.chains_project.maven_lockfile.resolvers.MavenCompilerPluginResolver;
+import io.github.chains_project.maven_lockfile.resolvers.PluginConfigResolver;
 import io.github.chains_project.maven_lockfile.resolvers.ProjectBuilder;
-import io.github.chains_project.maven_lockfile.resolvers.ProtobufMavenPluginResolver;
 import io.github.chains_project.maven_lockfile.resolvers.QuarkusDeploymentResolver;
 import io.github.chains_project.maven_lockfile.resolvers.SpecialPluginResolver;
 import io.github.chains_project.maven_lockfile.resolvers.SurefirePluginResolver;
@@ -53,9 +52,19 @@ public class LockFileFacade {
      */
     private static final List<SpecialPluginResolver> PLUGIN_RESOLVERS = List.of(
             new QuarkusDeploymentResolver(),
-            new ProtobufMavenPluginResolver(),
             new SurefirePluginResolver(),
-            new MavenCompilerPluginResolver());
+            PluginConfigResolver.builder("org.apache.maven.plugins", "maven-compiler-plugin")
+                    .displayName("maven-compiler-plugin (annotationProcessorPaths)")
+                    .forceDependencyPopulation()
+                    .addRule(PluginConfigResolver.gavListToDeps("annotationProcessorPaths", "path"))
+                    .build(),
+            PluginConfigResolver.builder("io.github.ascopes", "protobuf-maven-plugin")
+                    .displayName("protobuf-maven-plugin")
+                    .addRule(PluginConfigResolver.singleValueToSpec(
+                            "protoc", "com.google.protobuf", "protoc", "exe"))
+                    .addRule(PluginConfigResolver.filteredGavListToSpecs(
+                            "plugins", "plugin", "kind", "binary-maven", "exe"))
+                    .build());
 
     /**
      * This visitor is used to traverse the dependency graph and add the edges to the graph.

@@ -29,7 +29,8 @@ class PluginConfigResolverTest {
 
     @Test
     void isApplicableWhenTargetPluginPresent() {
-        PluginConfigResolver resolver = PluginConfigResolver.builder("org.apache.maven.plugins", "maven-compiler-plugin")
+        PluginConfigResolver resolver = PluginConfigResolver.builder(
+                        "org.apache.maven.plugins", "maven-compiler-plugin")
                 .addRule(PluginConfigResolver.gavListToDeps("annotationProcessorPaths", "path"))
                 .build();
 
@@ -52,8 +53,8 @@ class PluginConfigResolverTest {
         addChild(path, "artifactId", "lombok");
         addChild(path, "version", "1.18.30");
 
-        PluginConfigResolver resolver = PluginConfigResolver
-                .builder("org.apache.maven.plugins", "maven-compiler-plugin")
+        PluginConfigResolver resolver = PluginConfigResolver.builder(
+                        "org.apache.maven.plugins", "maven-compiler-plugin")
                 .addRule(PluginConfigResolver.gavListToDeps("annotationProcessorPaths", "path"))
                 .build();
 
@@ -61,8 +62,7 @@ class PluginConfigResolverTest {
         var result = resolver.discover(project, null);
 
         assertThat(result.isEmpty()).isFalse();
-        assertThat(result.getPluginDependencies())
-                .containsKey("org.apache.maven.plugins:maven-compiler-plugin");
+        assertThat(result.getPluginDependencies()).containsKey("org.apache.maven.plugins:maven-compiler-plugin");
         var deps = result.getPluginDependencies().get("org.apache.maven.plugins:maven-compiler-plugin");
         assertThat(deps).hasSize(1);
         assertThat(deps.get(0).getArtifactId()).isEqualTo("lombok");
@@ -71,14 +71,14 @@ class PluginConfigResolverTest {
 
     @Test
     void gavListToDepsReturnsEmptyWhenContainerAbsent() {
-        PluginConfigResolver resolver = PluginConfigResolver
-                .builder("org.apache.maven.plugins", "maven-compiler-plugin")
+        PluginConfigResolver resolver = PluginConfigResolver.builder(
+                        "org.apache.maven.plugins", "maven-compiler-plugin")
                 .addRule(PluginConfigResolver.gavListToDeps("annotationProcessorPaths", "path"))
                 .build();
 
         // Plugin present but config has no <annotationProcessorPaths>
-        MavenProject project = projectWithPlugin(
-                "org.apache.maven.plugins", "maven-compiler-plugin", new Xpp3Dom("configuration"));
+        MavenProject project =
+                projectWithPlugin("org.apache.maven.plugins", "maven-compiler-plugin", new Xpp3Dom("configuration"));
 
         assertThat(resolver.discover(project, null).isEmpty()).isTrue();
     }
@@ -92,18 +92,15 @@ class PluginConfigResolverTest {
         Xpp3Dom config = new Xpp3Dom("configuration");
         addChild(config, "protoc", "3.25.5");
 
-        PluginConfigResolver resolver = PluginConfigResolver
-                .builder("io.github.ascopes", "protobuf-maven-plugin")
-                .addRule(PluginConfigResolver.singleValueToSpec(
-                        "protoc", "com.google.protobuf", "protoc", "exe"))
+        PluginConfigResolver resolver = PluginConfigResolver.builder("io.github.ascopes", "protobuf-maven-plugin")
+                .addRule(PluginConfigResolver.singleValueToSpec("protoc", "com.google.protobuf", "protoc", "exe"))
                 .build();
 
         MavenProject project = projectWithPlugin("io.github.ascopes", "protobuf-maven-plugin", config);
         var result = resolver.discover(project, null);
 
         assertThat(result.isEmpty()).isFalse();
-        assertThat(result.getPlatformArtifactSpecs())
-                .containsExactly("com.google.protobuf:protoc:exe:3.25.5");
+        assertThat(result.getPlatformArtifactSpecs()).containsExactly("com.google.protobuf:protoc:exe:3.25.5");
     }
 
     // -------------------------------------------------------------------------
@@ -131,17 +128,15 @@ class PluginConfigResolverTest {
         addChild(otherPlugin, "version", "1.0.0");
         plugins.addChild(otherPlugin);
 
-        PluginConfigResolver resolver = PluginConfigResolver
-                .builder("io.github.ascopes", "protobuf-maven-plugin")
-                .addRule(PluginConfigResolver.filteredGavListToSpecs(
-                        "plugins", "plugin", "kind", "binary-maven", "exe"))
+        PluginConfigResolver resolver = PluginConfigResolver.builder("io.github.ascopes", "protobuf-maven-plugin")
+                .addRule(
+                        PluginConfigResolver.filteredGavListToSpecs("plugins", "plugin", "kind", "binary-maven", "exe"))
                 .build();
 
         MavenProject project = projectWithPlugin("io.github.ascopes", "protobuf-maven-plugin", config);
         var result = resolver.discover(project, null);
 
-        assertThat(result.getPlatformArtifactSpecs())
-                .containsExactly("io.grpc:protoc-gen-grpc-java:exe:1.68.0");
+        assertThat(result.getPlatformArtifactSpecs()).containsExactly("io.grpc:protoc-gen-grpc-java:exe:1.68.0");
     }
 
     // -------------------------------------------------------------------------
@@ -162,12 +157,10 @@ class PluginConfigResolverTest {
         addChild(binaryPlugin, "version", "1.68.0");
         plugins.addChild(binaryPlugin);
 
-        PluginConfigResolver resolver = PluginConfigResolver
-                .builder("io.github.ascopes", "protobuf-maven-plugin")
-                .addRule(PluginConfigResolver.singleValueToSpec(
-                        "protoc", "com.google.protobuf", "protoc", "exe"))
-                .addRule(PluginConfigResolver.filteredGavListToSpecs(
-                        "plugins", "plugin", "kind", "binary-maven", "exe"))
+        PluginConfigResolver resolver = PluginConfigResolver.builder("io.github.ascopes", "protobuf-maven-plugin")
+                .addRule(PluginConfigResolver.singleValueToSpec("protoc", "com.google.protobuf", "protoc", "exe"))
+                .addRule(
+                        PluginConfigResolver.filteredGavListToSpecs("plugins", "plugin", "kind", "binary-maven", "exe"))
                 .build();
 
         MavenProject project = projectWithPlugin("io.github.ascopes", "protobuf-maven-plugin", config);
@@ -175,8 +168,7 @@ class PluginConfigResolverTest {
 
         assertThat(result.getPlatformArtifactSpecs())
                 .containsExactlyInAnyOrder(
-                        "com.google.protobuf:protoc:exe:3.25.5",
-                        "io.grpc:protoc-gen-grpc-java:exe:1.68.0");
+                        "com.google.protobuf:protoc:exe:3.25.5", "io.grpc:protoc-gen-grpc-java:exe:1.68.0");
     }
 
     // -------------------------------------------------------------------------

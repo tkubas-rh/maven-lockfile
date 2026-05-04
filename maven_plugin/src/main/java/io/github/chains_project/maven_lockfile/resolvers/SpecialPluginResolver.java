@@ -83,8 +83,7 @@ public abstract class SpecialPluginResolver {
      * Returns the first build plugin matching both {@code groupId} and {@code artifactId},
      * or empty. Use this when multiple plugins from different groups share the same artifactId.
      */
-    protected static Optional<Plugin> findPlugin(
-            MavenProject project, String groupId, String artifactId) {
+    protected static Optional<Plugin> findPlugin(MavenProject project, String groupId, String artifactId) {
         return project.getBuildPlugins().stream()
                 .filter(p -> groupId.equals(p.getGroupId()) && artifactId.equals(p.getArtifactId()))
                 .findFirst();
@@ -133,9 +132,7 @@ public abstract class SpecialPluginResolver {
         private final Map<String, List<Dependency>> pluginDependencies;
         private final List<String> platformArtifactSpecs;
 
-        private DiscoveryResult(
-                Map<String, List<Dependency>> pluginDependencies,
-                List<String> platformArtifactSpecs) {
+        private DiscoveryResult(Map<String, List<Dependency>> pluginDependencies, List<String> platformArtifactSpecs) {
             this.pluginDependencies = pluginDependencies;
             this.platformArtifactSpecs = platformArtifactSpecs;
         }
@@ -151,8 +148,7 @@ public abstract class SpecialPluginResolver {
          * @param pluginKey  {@code groupId:artifactId} of the target plugin
          * @param deps       dependencies to inject
          */
-        public static DiscoveryResult ofPluginDependencies(
-                String pluginKey, List<Dependency> deps) {
+        public static DiscoveryResult ofPluginDependencies(String pluginKey, List<Dependency> deps) {
             return new DiscoveryResult(Map.of(pluginKey, deps), Collections.emptyList());
         }
 

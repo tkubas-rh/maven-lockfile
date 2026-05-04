@@ -28,8 +28,7 @@ public class SurefirePluginResolver extends SpecialPluginResolver {
 
     private static final String SUREFIRE_GROUP_ID = "org.apache.maven.surefire";
     private static final String SUREFIRE_ARTIFACT_ID = "maven-surefire-plugin";
-    private static final String SUREFIRE_PLUGIN_KEY =
-            "org.apache.maven.plugins:" + SUREFIRE_ARTIFACT_ID;
+    private static final String SUREFIRE_PLUGIN_KEY = "org.apache.maven.plugins:" + SUREFIRE_ARTIFACT_ID;
 
     /**
      * Maps one or more test-framework marker groupIds to the Surefire provider artifactId that
@@ -53,8 +52,7 @@ public class SurefirePluginResolver extends SpecialPluginResolver {
 
     @Override
     public boolean isApplicable(MavenProject project) {
-        return findPlugin(project, SUREFIRE_ARTIFACT_ID).isPresent()
-                && detectProvider(project) != null;
+        return findPlugin(project, SUREFIRE_ARTIFACT_ID).isPresent() && detectProvider(project) != null;
     }
 
     @Override
@@ -69,8 +67,7 @@ public class SurefirePluginResolver extends SpecialPluginResolver {
                 .orElse(null);
 
         if (surefireVersion == null || surefireVersion.startsWith("${")) {
-            PluginLogManager.getLog().warn(
-                    "SurefirePluginResolver: could not resolve surefire version — skipping");
+            PluginLogManager.getLog().warn("SurefirePluginResolver: could not resolve surefire version — skipping");
             return DiscoveryResult.empty();
         }
 
@@ -84,9 +81,10 @@ public class SurefirePluginResolver extends SpecialPluginResolver {
         provider.setArtifactId(providerArtifactId);
         provider.setVersion(surefireVersion);
 
-        PluginLogManager.getLog().info(String.format(
-                "SurefirePluginResolver: injecting %s:%s:%s into %s",
-                SUREFIRE_GROUP_ID, providerArtifactId, surefireVersion, SUREFIRE_PLUGIN_KEY));
+        PluginLogManager.getLog()
+                .info(String.format(
+                        "SurefirePluginResolver: injecting %s:%s:%s into %s",
+                        SUREFIRE_GROUP_ID, providerArtifactId, surefireVersion, SUREFIRE_PLUGIN_KEY));
 
         List<Dependency> deps = new ArrayList<>();
         deps.add(provider);

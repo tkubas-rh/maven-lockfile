@@ -124,11 +124,14 @@ public class LockFileFacade {
             DependencyCollectorBuilder dependencyCollectorBuilder,
             AbstractChecksumCalculator checksumCalculator,
             MetaData metadata,
-            RepositorySystem repositorySystem) {
+            RepositorySystem repositorySystem,
+            List<SpecialPluginResolver> additionalResolvers) {
+        List<SpecialPluginResolver> allResolvers = new ArrayList<>(PLUGIN_RESOLVERS);
+        allResolvers.addAll(additionalResolvers);
         PluginLogManager.getLog().info(String.format("Generating lock file for project %s", project.getArtifactId()));
         Set<MavenPlugin> plugins = new TreeSet<>();
         if (metadata.getConfig().isIncludeMavenPlugins()) {
-            plugins = getAllPlugins(project, session, dependencyCollectorBuilder, checksumCalculator);
+            plugins = getAllPlugins(project, session, dependencyCollectorBuilder, checksumCalculator, allResolvers);
         }
 
         Set<MavenExtension> extensions =
@@ -149,7 +152,7 @@ public class LockFileFacade {
         // Force-resolve annotation processor artifacts (and other forceDependencyPopulation resolvers)
         // as standalone roots so their full unmediated transitive closure is captured.
         roots.addAll(resolveSpecialPluginDependencies(
-                project, session, dependencyCollectorBuilder, checksumCalculator));
+                project, session, dependencyCollectorBuilder, checksumCalculator, allResolvers));
 
         var pom = constructRecursivePom(project, session, checksumCalculator);
 
@@ -326,7 +329,8 @@ public class LockFileFacade {
             MavenProject project,
             MavenSession session,
             DependencyCollectorBuilder dependencyCollectorBuilder,
-            AbstractChecksumCalculator checksumCalculator) {
+            AbstractChecksumCalculator checksumCalculator,
+            List<SpecialPluginResolver> resolvers) {
         Set<MavenPlugin> plugins = new TreeSet<>();
 
         // Build a map of user-declared plugin dependencies (mutable lists so resolvers can inject)
@@ -343,7 +347,7 @@ public class LockFileFacade {
         }
 
         // Run all registered special plugin resolvers to inject additional plugin dependencies
-        for (SpecialPluginResolver resolver : PLUGIN_RESOLVERS) {
+        for (SpecialPluginResolver resolver : resolvers) {
             if (!resolver.isApplicable(project)) continue;
             PluginLogManager.getLog()
                     .info(resolver.getDisplayName() + " detected — running special plugin resolver");
@@ -651,13 +655,14 @@ public class LockFileFacade {
                     MavenProject project,
                     MavenSession session,
                     DependencyCollectorBuilder dependencyCollectorBuilder,
-                    AbstractChecksumCalculator checksumCalculator) {
+                    AbstractChecksumCalculator checksumCalculator,
+                    List<SpecialPluginResolver> resolvers) {
         Set<io.github.chains_project.maven_lockfile.graph.DependencyNode> allRoots = new TreeSet<>(
                 Comparator.comparing(
                         io.github.chains_project.maven_lockfile.graph.DependencyNode::getComparatorString));
         ProjectBuilder projectBuilder = new ProjectBuilder(session, project.getPluginArtifactRepositories());
 
-        for (SpecialPluginResolver resolver : PLUGIN_RESOLVERS) {
+        for (SpecialPluginResolver resolver : resolvers) {
             if (!resolver.isApplicable(project)) continue;
             if (!resolver.forceDependencyPopulation()) continue;
 

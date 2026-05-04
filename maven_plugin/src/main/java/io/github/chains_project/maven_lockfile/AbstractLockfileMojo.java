@@ -7,6 +7,9 @@ import io.github.chains_project.maven_lockfile.checksum.FileSystemChecksumCalcul
 import io.github.chains_project.maven_lockfile.checksum.RemoteChecksumCalculator;
 import io.github.chains_project.maven_lockfile.data.Config;
 import io.github.chains_project.maven_lockfile.data.Environment;
+import io.github.chains_project.maven_lockfile.resolvers.ConfigurablePluginResolver;
+import java.util.Collections;
+import java.util.List;
 import org.apache.maven.execution.MavenSession;
 import org.apache.maven.plugin.AbstractMojo;
 import org.apache.maven.plugin.MojoExecution;
@@ -81,6 +84,13 @@ public abstract class AbstractLockfileMojo extends AbstractMojo {
 
     @Parameter(defaultValue = "${mojoExecution}", readonly = true)
     protected MojoExecution mojo;
+
+    /**
+     * User-defined plugin resolvers. Each entry injects a fixed set of dependencies into the
+     * named build plugin's recorded dependency set in the lockfile.
+     */
+    @Parameter
+    protected List<ConfigurablePluginResolver> pluginResolvers = Collections.emptyList();
 
     protected Environment generateMetaInformation() {
         String osName = System.getProperty("os.name");

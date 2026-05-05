@@ -5,9 +5,14 @@ import com.google.common.graph.MutableGraph;
 import io.github.chains_project.maven_lockfile.checksum.AbstractChecksumCalculator;
 import io.github.chains_project.maven_lockfile.checksum.RepositoryInformation;
 import io.github.chains_project.maven_lockfile.data.*;
+import io.github.chains_project.maven_lockfile.data.P2DependencyNode;
+import io.github.chains_project.maven_lockfile.data.P2Repository;
 import io.github.chains_project.maven_lockfile.graph.DependencyGraph;
 import io.github.chains_project.maven_lockfile.reporting.PluginLogManager;
 import io.github.chains_project.maven_lockfile.resolvers.BomResolver;
+import io.github.chains_project.maven_lockfile.resolvers.ExtraArtifactResolver;
+import io.github.chains_project.maven_lockfile.resolvers.P2Resolver;
+import io.github.chains_project.maven_lockfile.resolvers.PlatformArtifactResolver;
 import io.github.chains_project.maven_lockfile.resolvers.PluginConfigResolver;
 import io.github.chains_project.maven_lockfile.resolvers.ProjectBuilder;
 import io.github.chains_project.maven_lockfile.resolvers.QuarkusDeploymentResolver;
@@ -29,6 +34,7 @@ import org.apache.maven.model.Plugin;
 import org.apache.maven.project.DefaultProjectBuildingRequest;
 import org.apache.maven.project.MavenProject;
 import org.apache.maven.project.ProjectBuildingRequest;
+import org.eclipse.aether.DefaultRepositorySystemSession;
 import org.apache.maven.shared.dependency.graph.DependencyCollectorBuilder;
 import org.apache.maven.shared.dependency.graph.DependencyCollectorBuilderException;
 import org.apache.maven.shared.dependency.graph.DependencyNode;
@@ -126,6 +132,14 @@ public class LockFileFacade {
             MetaData metadata,
             RepositorySystem repositorySystem) {
         PluginLogManager.getLog().info(String.format("Generating lock file for project %s", project.getArtifactId()));
+
+        // Phase 1: attach a recording RepositoryListener to a mutable session copy.
+        // The listener captures every artifact Aether resolves during dependency collection,
+        // which is the basis for ExtraArtifactResolver finding implicit artifacts later.
+        ExtraArtifactResolver.Tracker extraTracker = ExtraArtifactResolver.createTracker(session, project);
+        DefaultRepositorySystemSession mutableSession = extraTracker.getMutableSession();
+        session.getProjectBuildingRequest().setRepositorySession(mutableSession);
+
         Set<MavenPlugin> plugins = new TreeSet<>();
         if (metadata.getConfig().isIncludeMavenPlugins()) {
             plugins = getAllPlugins(project, session, dependencyCollectorBuilder, checksumCalculator);
@@ -151,10 +165,56 @@ public class LockFileFacade {
         roots.addAll(resolveSpecialPluginDependencies(
                 project, session, dependencyCollectorBuilder, checksumCalculator));
 
+        // Collect platform artifact specs from all applicable resolvers and resolve them
+        // to platform-classifier DependencyNode entries (e.g. protoc:linux-x86_64).
+        List<String> platformSpecs = new ArrayList<>();
+        for (SpecialPluginResolver resolver : PLUGIN_RESOLVERS) {
+            if (!resolver.isApplicable(project)) continue;
+            SpecialPluginResolver.DiscoveryResult result = resolver.discover(project, session);
+            platformSpecs.addAll(result.getPlatformArtifactSpecs());
+        }
+        if (!platformSpecs.isEmpty()) {
+            String osClassifier = PlatformArtifactResolver.detectOsClassifier(project);
+            if (osClassifier != null) {
+                roots.addAll(PlatformArtifactResolver.resolve(platformSpecs, osClassifier, checksumCalculator));
+            } else {
+                PluginLogManager.getLog().warn(String.format(
+                        "PlatformArtifacts: found %d spec(s) but could not determine OS classifier — skipping",
+                        platformSpecs.size()));
+            }
+        }
+
         var pom = constructRecursivePom(project, session, checksumCalculator);
 
         resolveParentsAndBomsForDependencies(dependencyGraph, session, project, checksumCalculator);
         var boms = resolveBoms(session, project, checksumCalculator);
+
+        // Phase 2: extract artifacts that Aether resolved but that don't appear in the dependency
+        // graph, plugin list, or any other lockfile section. These are implicit runtime requirements
+        // (e.g. Maven core extensions, wagon providers) needed for a hermetic offline build.
+        Set<String> alreadyRecordedGavts = buildRecordedGavts(dependencyGraph, plugins, boms);
+        List<io.github.chains_project.maven_lockfile.graph.DependencyNode> extraNodes =
+                ExtraArtifactResolver.extractExtras(extraTracker, alreadyRecordedGavts, checksumCalculator);
+        roots.addAll(extraNodes);
+
+        // Write tracker JSON so all captured artifacts are available for diagnostics.
+        java.io.File trackerOutputFile = new java.io.File(
+                session.getRequest().getMultiModuleProjectDirectory(),
+                ".mvn/tracker-artifacts.json");
+        extraTracker.writeToFile(trackerOutputFile);
+
+        // Resolve P2/OSGi dependencies for Tycho projects (no-op for non-Tycho projects).
+        List<P2DependencyNode> p2Dependencies = Collections.emptyList();
+        List<P2Repository> p2Repositories = Collections.emptyList();
+        if (P2Resolver.isTychoProject(project)) {
+            PluginLogManager.getLog().info("Tycho project detected — resolving P2 dependencies from .target files");
+            P2Resolver.P2ResolverResult p2Result = P2Resolver.resolve(project);
+            p2Dependencies = p2Result.getArtifacts();
+            p2Repositories = p2Result.getRepositories();
+            PluginLogManager.getLog().info(String.format(
+                    "P2: resolved %d artifact(s) from %d repository(ies)",
+                    p2Dependencies.size(), p2Repositories.size()));
+        }
 
         return new LockFile(
                 GroupId.of(project.getGroupId()),
@@ -165,7 +225,9 @@ public class LockFileFacade {
                 plugins,
                 extensions,
                 metadata,
-                boms);
+                boms,
+                p2Dependencies,
+                p2Repositories);
     }
 
     private static Set<MavenExtension> getAllExtensions(
@@ -362,14 +424,8 @@ public class LockFileFacade {
                     }
                 }
             }
-            if (!result.getPlatformArtifactSpecs().isEmpty()) {
-                PluginLogManager.getLog()
-                        .warn(String.format(
-                                "%s: discovered %d platform artifact spec(s)"
-                                        + " — platform artifact resolution not yet supported",
-                                resolver.getDisplayName(),
-                                result.getPlatformArtifactSpecs().size()));
-            }
+            // Platform artifact specs are collected and resolved by the caller
+            // (generateLockFileFromProject) after all plugin dependencies are gathered.
         }
 
         ProjectBuilder projectBuilder = new ProjectBuilder(session, project.getPluginArtifactRepositories());
@@ -719,5 +775,43 @@ public class LockFileFacade {
         BomResolver bomResolver =
                 new BomResolver(session, rootProject.getRemoteArtifactRepositories(), checksumCalculator);
         return bomResolver.resolveForProject(rootProject);
+    }
+
+    /**
+     * Builds a set of {@code groupId:artifactId:version:type} keys for every artifact already
+     * recorded in the lockfile, used by {@link ExtraArtifactResolver#extractExtras} to avoid
+     * duplicating artifacts that are already captured in the dependency graph, plugin list, or BOMs.
+     */
+    private static Set<String> buildRecordedGavts(
+            DependencyGraph dependencyGraph,
+            Set<MavenPlugin> plugins,
+            Set<Pom> boms) {
+        Set<String> gavts = new HashSet<>();
+
+        // All nodes in the dependency graph (roots + transitive children)
+        for (io.github.chains_project.maven_lockfile.graph.DependencyNode node
+                : dependencyGraph.getDependencySet()) {
+            gavts.add(node.getGroupId() + ":" + node.getArtifactId()
+                    + ":" + node.getVersion() + ":" + node.getType());
+        }
+
+        // Plugin JARs recorded in the plugin section
+        for (MavenPlugin plugin : plugins) {
+            gavts.add(plugin.getGroupId() + ":" + plugin.getArtifactId()
+                    + ":" + plugin.getVersion() + ":jar");
+            for (io.github.chains_project.maven_lockfile.graph.DependencyNode dep
+                    : plugin.getDependencies()) {
+                gavts.add(dep.getGroupId() + ":" + dep.getArtifactId()
+                        + ":" + dep.getVersion() + ":" + dep.getType());
+            }
+        }
+
+        // BOM POMs recorded in the boms section
+        for (Pom bom : boms) {
+            gavts.add(bom.getGroupId() + ":" + bom.getArtifactId()
+                    + ":" + bom.getVersion() + ":pom");
+        }
+
+        return gavts;
     }
 }

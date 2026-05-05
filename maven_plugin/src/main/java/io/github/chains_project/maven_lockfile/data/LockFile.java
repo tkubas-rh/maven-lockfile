@@ -7,6 +7,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Collections;
+import java.util.List;
 import java.util.Objects;
 import java.util.Set;
 
@@ -47,6 +48,12 @@ public class LockFile {
 
     private final Set<Pom> boms;
 
+    @SerializedName("p2Dependencies")
+    private final List<P2DependencyNode> p2Dependencies;
+
+    @SerializedName("p2Repositories")
+    private final List<P2Repository> p2Repositories;
+
     public LockFile(
             GroupId groupId,
             ArtifactId name,
@@ -57,6 +64,22 @@ public class LockFile {
             Set<MavenExtension> mavenExtensions,
             MetaData metaData,
             Set<Pom> boms) {
+        this(groupId, name, versionNumber, pom, dependencies, mavenPlugins, mavenExtensions,
+                metaData, boms, Collections.emptyList(), Collections.emptyList());
+    }
+
+    public LockFile(
+            GroupId groupId,
+            ArtifactId name,
+            VersionNumber versionNumber,
+            Pom pom,
+            Set<DependencyNode> dependencies,
+            Set<MavenPlugin> mavenPlugins,
+            Set<MavenExtension> mavenExtensions,
+            MetaData metaData,
+            Set<Pom> boms,
+            List<P2DependencyNode> p2Dependencies,
+            List<P2Repository> p2Repositories) {
         this.groupId = groupId;
         this.name = name;
         this.version = versionNumber;
@@ -66,6 +89,8 @@ public class LockFile {
         this.mavenExtensions = mavenExtensions == null ? Collections.emptySet() : mavenExtensions;
         this.metaData = metaData;
         this.boms = boms;
+        this.p2Dependencies = p2Dependencies == null ? Collections.emptyList() : p2Dependencies;
+        this.p2Repositories = p2Repositories == null ? Collections.emptyList() : p2Repositories;
     }
     /**
      * Create a lock file object from a serialized JSON string.
@@ -130,6 +155,14 @@ public class LockFile {
     public Set<MavenExtension> getMavenExtensions() {
         return nullToEmpty(mavenExtensions);
     }
+    public List<P2DependencyNode> getP2Dependencies() {
+        return p2Dependencies == null ? Collections.emptyList() : p2Dependencies;
+    }
+
+    public List<P2Repository> getP2Repositories() {
+        return p2Repositories == null ? Collections.emptyList() : p2Repositories;
+    }
+
     /**
      * @return the metadata about the environment in which the lock file was generated
      */

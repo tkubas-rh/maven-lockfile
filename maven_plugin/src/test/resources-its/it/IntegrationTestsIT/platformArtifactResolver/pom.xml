@@ -1,0 +1,58 @@
+<project>
+  <modelVersion>4.0.0</modelVersion>
+
+  <groupId>com.mycompany.app</groupId>
+  <artifactId>platform-artifact-resolver-test</artifactId>
+  <packaging>jar</packaging>
+  <version>1</version>
+
+  <properties>
+    <maven.compiler.target>11</maven.compiler.target>
+    <maven.compiler.source>11</maven.compiler.source>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+  </properties>
+
+  <dependencies>
+    <dependency>
+      <groupId>org.junit.jupiter</groupId>
+      <artifactId>junit-jupiter-api</artifactId>
+      <version>5.10.2</version>
+      <scope>test</scope>
+    </dependency>
+  </dependencies>
+
+  <build>
+    <plugins>
+      <!--
+        protobuf-maven-plugin with protoc version configured.
+        PlatformArtifactResolver (via PluginConfigResolver's singleValueToSpec rule)
+        will discover the protoc spec and attempt to resolve it for the current platform.
+        The lockfile generation must succeed regardless of whether protoc is cached locally.
+      -->
+      <plugin>
+        <groupId>io.github.ascopes</groupId>
+        <artifactId>protobuf-maven-plugin</artifactId>
+        <version>2.6.0</version>
+        <configuration>
+          <protocVersion>3.25.5</protocVersion>
+        </configuration>
+      </plugin>
+      <plugin>
+        <groupId>io.github.chains-project</groupId>
+        <artifactId>maven-lockfile</artifactId>
+        <version>@project.version@</version>
+        <executions>
+          <execution>
+            <goals>
+              <goal>generate</goal>
+            </goals>
+          </execution>
+        </executions>
+        <configuration>
+          <checksumMode>local</checksumMode>
+          <includeMavenPlugins>true</includeMavenPlugins>
+        </configuration>
+      </plugin>
+    </plugins>
+  </build>
+</project>

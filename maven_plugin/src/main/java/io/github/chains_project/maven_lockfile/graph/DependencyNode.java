@@ -43,6 +43,28 @@ public class DependencyNode implements Comparable<DependencyNode> {
 
     private Set<Pom> boms;
 
+    /**
+     * Creates a {@link DependencyNode} representing a platform-specific binary artifact
+     * (e.g. {@code protoc:linux-x86_64}) resolved by {@code PlatformArtifactResolver}.
+     * The node is marked as included and assigned compile scope.
+     */
+    public static DependencyNode ofPlatformArtifact(
+            ArtifactId artifactId,
+            GroupId groupId,
+            VersionNumber version,
+            Classifier classifier,
+            ArtifactType type,
+            ResolvedUrl resolved,
+            RepositoryId repositoryId,
+            String checksumAlgorithm,
+            String checksum) {
+        DependencyNode node = new DependencyNode(
+                artifactId, groupId, version, classifier, type,
+                MavenScope.COMPILE, resolved, repositoryId, checksumAlgorithm, checksum);
+        node.setIncluded(true);
+        return node;
+    }
+
     DependencyNode(
             ArtifactId artifactId,
             GroupId groupId,

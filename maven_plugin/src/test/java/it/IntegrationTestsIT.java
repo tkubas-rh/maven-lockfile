@@ -972,4 +972,62 @@ public class IntegrationTestsIT {
         assertThat(parent.getArtifactId().equals("oss-parent"));
         assertThat(parent.getVersion().equals("7"));
     }
+
+    @MavenTest
+    public void platformArtifactResolver(MavenExecutionResult result) throws Exception {
+        // contract: when protobuf-maven-plugin is present with <protocVersion> configured,
+        // PlatformArtifactResolver discovers a protoc spec via PluginConfigResolver and attempts
+        // to resolve it for the current platform. Lockfile generation must succeed regardless of
+        // whether protoc is cached in the local repository. If protoc IS resolved, it must carry
+        // a non-blank OS/arch classifier (e.g. linux-x86_64).
+        System.out.println("Running 'platformArtifactResolver' integration test.");
+        assertThat(result).isSuccessful();
+        Path lockFilePath = findFile(result, "lockfile.json");
+        assertThat(lockFilePath).exists();
+        var lockFile = LockFile.readLockFile(lockFilePath);
+
+        // Any protoc entries that made it into the lockfile must have a platform classifier.
+        lockFile.getDependencies().stream()
+                .flatMap(dep -> flattenDependencies(dep).stream())
+                .filter(dep -> "protoc".equals(dep.getArtifactId().getValue()))
+                .forEach(dep -> assertThat(dep.getClassifier().getValue())
+                        .as("protoc dependency must have an OS/arch classifier")
+                        .isNotBlank());
+    }
+
+    @MavenTest
+    public void extraArtifactResolver(MavenExecutionResult result) throws Exception {
+        // contract: ExtraArtifactResolver attaches a recording RepositoryListener for every
+        // lockfile generation run and writes a tracker JSON to .mvn/tracker-artifacts.json.
+        // The file must always be created (even if no extras are discovered) so downstream
+        // tooling can rely on its presence.
+        System.out.println("Running 'extraArtifactResolver' integration test.");
+        assertThat(result).isSuccessful();
+        Path lockFilePath = findFile(result, "lockfile.json");
+        assertThat(lockFilePath).exists();
+
+        // Tracker file written by ExtraArtifactResolver.Tracker.writeToFile()
+        assertThat(fileExists(result, ".mvn/tracker-artifacts.json"))
+                .as(".mvn/tracker-artifacts.json must be written by ExtraArtifactResolver")
+                .isTrue();
+    }
+
+    @MavenTest
+    public void p2Resolver(MavenExecutionResult result) throws Exception {
+        // contract: for a non-Tycho project (no tycho-maven-plugin in build plugins),
+        // P2Resolver.isTychoProject() returns false and no P2 artifacts or repositories
+        // are added to the lockfile. The lockfile is generated successfully.
+        System.out.println("Running 'p2Resolver' integration test.");
+        assertThat(result).isSuccessful();
+        Path lockFilePath = findFile(result, "lockfile.json");
+        assertThat(lockFilePath).exists();
+        var lockFile = LockFile.readLockFile(lockFilePath);
+
+        assertThat(lockFile.getP2Dependencies())
+                .as("non-Tycho project must have no P2 dependencies")
+                .isEmpty();
+        assertThat(lockFile.getP2Repositories())
+                .as("non-Tycho project must have no P2 repositories")
+                .isEmpty();
+    }
 }

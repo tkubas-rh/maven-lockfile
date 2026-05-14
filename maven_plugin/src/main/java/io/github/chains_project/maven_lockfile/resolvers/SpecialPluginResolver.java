@@ -90,6 +90,17 @@ public abstract class SpecialPluginResolver {
     }
 
     /**
+     * Creates a {@link Dependency} with the given GAV coordinates.
+     */
+    protected static Dependency createDependency(String groupId, String artifactId, String version) {
+        Dependency dep = new Dependency();
+        dep.setGroupId(groupId);
+        dep.setArtifactId(artifactId);
+        dep.setVersion(version);
+        return dep;
+    }
+
+    /**
      * Resolves a Maven property placeholder ({@code ${property.name}}) against the project's
      * effective properties. Returns the value unchanged if it is not a placeholder or the
      * property cannot be found.

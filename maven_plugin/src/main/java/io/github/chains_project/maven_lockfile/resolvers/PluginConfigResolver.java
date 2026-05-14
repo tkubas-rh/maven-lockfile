@@ -3,6 +3,7 @@ package io.github.chains_project.maven_lockfile.resolvers;
 import io.github.chains_project.maven_lockfile.reporting.PluginLogManager;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import org.apache.maven.execution.MavenSession;
 import org.apache.maven.model.Dependency;
 import org.apache.maven.model.Plugin;
@@ -62,9 +63,7 @@ public final class PluginConfigResolver extends SpecialPluginResolver {
 
     @Override
     public boolean isApplicable(MavenProject project) {
-        return pluginGroupId != null
-                ? findPlugin(project, pluginGroupId, pluginArtifactId).isPresent()
-                : findPlugin(project, pluginArtifactId).isPresent();
+        return lookupPlugin(project).isPresent();
     }
 
     @Override
@@ -79,10 +78,7 @@ public final class PluginConfigResolver extends SpecialPluginResolver {
 
     @Override
     public DiscoveryResult discover(MavenProject project, MavenSession session) {
-        Plugin plugin = pluginGroupId != null
-                ? findPlugin(project, pluginGroupId, pluginArtifactId).orElse(null)
-                : findPlugin(project, pluginArtifactId).orElse(null);
-
+        Plugin plugin = lookupPlugin(project).orElse(null);
         if (plugin == null || !(plugin.getConfiguration() instanceof Xpp3Dom)) {
             return DiscoveryResult.empty();
         }
@@ -106,6 +102,12 @@ public final class PluginConfigResolver extends SpecialPluginResolver {
             return DiscoveryResult.ofPlatformArtifacts(specs);
         }
         return DiscoveryResult.empty();
+    }
+
+    private Optional<Plugin> lookupPlugin(MavenProject project) {
+        return pluginGroupId != null
+                ? findPlugin(project, pluginGroupId, pluginArtifactId)
+                : findPlugin(project, pluginArtifactId);
     }
 
     // -------------------------------------------------------------------------
@@ -211,11 +213,7 @@ public final class PluginConfigResolver extends SpecialPluginResolver {
                                     version, groupId, artifactId));
                     continue;
                 }
-                Dependency dep = new Dependency();
-                dep.setGroupId(groupId);
-                dep.setArtifactId(artifactId);
-                dep.setVersion(version);
-                deps.add(dep);
+                deps.add(createDependency(groupId, artifactId, version));
             }
         };
     }

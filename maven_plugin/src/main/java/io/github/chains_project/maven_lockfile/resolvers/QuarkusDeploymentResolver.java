@@ -11,7 +11,6 @@ import java.util.Properties;
 import java.util.Set;
 import java.util.jar.JarFile;
 import java.util.zip.ZipEntry;
-import javax.xml.parsers.DocumentBuilder;
 import javax.xml.parsers.DocumentBuilderFactory;
 import org.apache.maven.artifact.Artifact;
 import org.apache.maven.execution.MavenSession;
@@ -97,99 +96,107 @@ public class QuarkusDeploymentResolver extends SpecialPluginResolver {
      */
     public static List<Dependency> discoverDeploymentDependencies(MavenProject project, MavenSession session) {
         List<Dependency> deploymentDeps = new ArrayList<>();
-        Set<String> seen = new HashSet<>(); // groupId:artifactId dedup key
+        Set<String> seen = new HashSet<>();
 
-        // Always add platform-properties — Quarkus bootstrap needs this to identify the platform.
         String quarkusVersion = findQuarkusVersion(project);
-        if (quarkusVersion != null) {
-            Dependency platformProps = new Dependency();
-            platformProps.setGroupId(PLATFORM_PROPERTIES_GROUP);
-            platformProps.setArtifactId(PLATFORM_PROPERTIES_ARTIFACT);
-            platformProps.setVersion(quarkusVersion);
-            platformProps.setType("properties");
-            addIfAbsent(deploymentDeps, seen, platformProps);
-            PluginLogManager.getLog()
-                    .info("Quarkus: adding platform-properties " + PLATFORM_PROPERTIES_ARTIFACT + ":" + quarkusVersion);
-        } else {
+        addPlatformProperties(quarkusVersion, deploymentDeps, seen);
+
+        List<Dependency> primaryDeps = discoverPrimaryDeploymentArtifacts(project, deploymentDeps, seen);
+        PluginLogManager.getLog()
+                .info(String.format("Quarkus: discovered %d primary deployment artifact(s)", primaryDeps.size()));
+
+        String localRepoBase = session.getLocalRepository().getBasedir();
+        int extraCount = discoverTransitiveDeploymentDeps(
+                primaryDeps, localRepoBase, quarkusVersion, deploymentDeps, seen);
+        PluginLogManager.getLog()
+                .info(String.format("Quarkus: added %d extra artifact(s) from deployment POM scanning", extraCount));
+
+        return deploymentDeps;
+    }
+
+    private static void addPlatformProperties(
+            String quarkusVersion, List<Dependency> out, Set<String> seen) {
+        if (quarkusVersion == null) {
             PluginLogManager.getLog()
                     .warn("Quarkus: could not determine Quarkus version — skipping platform-properties");
+            return;
         }
+        Dependency platformProps = createDependency(
+                PLATFORM_PROPERTIES_GROUP, PLATFORM_PROPERTIES_ARTIFACT, quarkusVersion);
+        platformProps.setType("properties");
+        addIfAbsent(out, seen, platformProps);
+        PluginLogManager.getLog()
+                .info("Quarkus: adding platform-properties " + PLATFORM_PROPERTIES_ARTIFACT + ":" + quarkusVersion);
+    }
 
-        // Phase 1: scan each resolved JAR for META-INF/quarkus-extension.properties
-        List<Dependency> primaryDeploymentDeps = new ArrayList<>();
+    private static List<Dependency> discoverPrimaryDeploymentArtifacts(
+            MavenProject project, List<Dependency> out, Set<String> seen) {
+        List<Dependency> primaryDeps = new ArrayList<>();
         for (Artifact artifact : project.getArtifacts()) {
-            File artifactFile = artifact.getFile();
-            if (artifactFile == null || !artifactFile.exists()) continue;
-            if (!"jar".equals(artifact.getType())) continue;
-
-            try {
-                String deploymentGav = readDeploymentArtifact(artifactFile);
-                if (deploymentGav == null) continue;
-
-                String[] parts = deploymentGav.split(":");
-                if (parts.length < 3) {
-                    PluginLogManager.getLog()
-                            .warn("Quarkus: malformed deployment-artifact value in " + artifact + ": " + deploymentGav);
-                    continue;
-                }
-
-                Dependency dep = new Dependency();
-                dep.setGroupId(parts[0]);
-                dep.setArtifactId(parts[1]);
-                dep.setVersion(parts[2]);
-                if (addIfAbsent(deploymentDeps, seen, dep)) {
-                    primaryDeploymentDeps.add(dep);
-                    PluginLogManager.getLog()
-                            .debug("Quarkus: discovered deployment artifact " + deploymentGav + " (from "
-                                    + artifact.getArtifactId() + ")");
-                }
-            } catch (IOException e) {
+            Dependency dep = tryParseDeploymentArtifact(artifact);
+            if (dep == null) continue;
+            if (addIfAbsent(out, seen, dep)) {
+                primaryDeps.add(dep);
                 PluginLogManager.getLog()
-                        .debug("Quarkus: could not read " + artifactFile.getName() + ": " + e.getMessage());
+                        .debug("Quarkus: discovered deployment artifact "
+                                + dep.getGroupId() + ":" + dep.getArtifactId() + ":" + dep.getVersion()
+                                + " (from " + artifact.getArtifactId() + ")");
             }
         }
+        return primaryDeps;
+    }
 
-        PluginLogManager.getLog()
-                .info(String.format(
-                        "Quarkus: discovered %d primary deployment artifact(s)", primaryDeploymentDeps.size()));
+    private static Dependency tryParseDeploymentArtifact(Artifact artifact) {
+        File file = artifact.getFile();
+        if (file == null || !file.exists() || !"jar".equals(artifact.getType())) {
+            return null;
+        }
+        try {
+            String gav = readDeploymentArtifact(file);
+            if (gav == null) return null;
 
-        // Phase 2: for each primary deployment artifact, read its POM to find:
-        //   a) optional "conditional" *-deployment deps + their runtime counterparts
-        //   b) version-less io.quarkus deps that would be misresolved when plugin version != BOM version
-        // Also apply the same scan one level deeper for any newly discovered deployment deps.
-        String localRepoBase = session.getLocalRepository().getBasedir();
+            String[] parts = gav.split(":");
+            if (parts.length < 3) {
+                PluginLogManager.getLog()
+                        .warn("Quarkus: malformed deployment-artifact value in " + artifact + ": " + gav);
+                return null;
+            }
+            return createDependency(parts[0], parts[1], parts[2]);
+        } catch (IOException e) {
+            PluginLogManager.getLog()
+                    .debug("Quarkus: could not read " + file.getName() + ": " + e.getMessage());
+            return null;
+        }
+    }
+
+    private static int discoverTransitiveDeploymentDeps(
+            List<Dependency> primaryDeps, String localRepoBase, String quarkusVersion,
+            List<Dependency> out, Set<String> seen) {
         int extraCount = 0;
-        List<Dependency> toScan = new ArrayList<>(primaryDeploymentDeps);
-        // Track which deployment artifact POMs we've already scanned to avoid redundant work.
         Set<String> scanned = new HashSet<>();
+        List<Dependency> toScan = new ArrayList<>(primaryDeps);
+
         while (!toScan.isEmpty()) {
             List<Dependency> nextScan = new ArrayList<>();
-            for (Dependency deploymentDep : toScan) {
-                String scanKey = deploymentDep.getGroupId() + ":" + deploymentDep.getArtifactId() + ":"
-                        + deploymentDep.getVersion();
+            for (Dependency dep : toScan) {
+                String scanKey = dep.getGroupId() + ":" + dep.getArtifactId() + ":" + dep.getVersion();
                 if (!scanned.add(scanKey)) continue;
 
-                List<Dependency> pomDeps = discoverDeploymentPomDeps(deploymentDep, localRepoBase, quarkusVersion);
-                for (Dependency pd : pomDeps) {
-                    if (addIfAbsent(deploymentDeps, seen, pd)) {
-                        extraCount++;
-                        PluginLogManager.getLog()
-                                .debug("Quarkus: adding POM dep " + pd.getArtifactId()
-                                        + ":" + pd.getVersion()
-                                        + " (from " + deploymentDep.getArtifactId() + ")");
-                        // Queue newly discovered deployment artifacts for POM scanning too.
-                        if (pd.getArtifactId().endsWith(DEPLOYMENT_SUFFIX)) {
-                            nextScan.add(pd);
-                        }
+                for (Dependency pomDep : discoverDeploymentPomDeps(dep, localRepoBase, quarkusVersion)) {
+                    if (!addIfAbsent(out, seen, pomDep)) continue;
+                    extraCount++;
+                    PluginLogManager.getLog()
+                            .debug("Quarkus: adding POM dep " + pomDep.getArtifactId()
+                                    + ":" + pomDep.getVersion()
+                                    + " (from " + dep.getArtifactId() + ")");
+                    if (pomDep.getArtifactId().endsWith(DEPLOYMENT_SUFFIX)) {
+                        nextScan.add(pomDep);
                     }
                 }
             }
             toScan = nextScan;
         }
-
-        PluginLogManager.getLog()
-                .info(String.format("Quarkus: added %d extra artifact(s) from deployment POM scanning", extraCount));
-        return deploymentDeps;
+        return extraCount;
     }
 
     /**
@@ -199,77 +206,79 @@ public class QuarkusDeploymentResolver extends SpecialPluginResolver {
      */
     private static List<Dependency> discoverDeploymentPomDeps(
             Dependency deploymentDep, String localRepoBase, String platformVersion) {
-        List<Dependency> result = new ArrayList<>();
         File pomFile = localRepoPomFile(localRepoBase, deploymentDep);
         if (pomFile == null || !pomFile.exists()) {
-            return result;
+            return List.of();
         }
 
         try {
-            DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
-            factory.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true);
-            DocumentBuilder builder = factory.newDocumentBuilder();
-            Document doc = builder.parse(pomFile);
-
-            NodeList depNodes = doc.getElementsByTagName("dependency");
-            for (int i = 0; i < depNodes.getLength(); i++) {
-                Element depElem = (Element) depNodes.item(i);
-                String groupId = childText(depElem, "groupId");
-                String artifactId = childText(depElem, "artifactId");
-                if (groupId == null || artifactId == null) continue;
-
-                String optional = childText(depElem, "optional");
-                boolean isOptional = "true".equals(optional);
-
-                String rawVersion = childText(depElem, "version");
-                boolean isVersionless = rawVersion == null || rawVersion.startsWith("${");
-
-                String version = rawVersion;
-                if (isVersionless) {
-                    if (groupId != null && groupId.startsWith("io.quarkus")) {
-                        version = platformVersion;
-                    } else {
-                        continue;
-                    }
-                }
-                if (version == null || version.startsWith("${")) {
-                    version = deploymentDep.getVersion();
-                }
-
-                // Category 1: optional *-deployment (conditional extension)
-                if (isOptional && artifactId.endsWith(DEPLOYMENT_SUFFIX)) {
-                    Dependency optDeploymentDep = new Dependency();
-                    optDeploymentDep.setGroupId(groupId);
-                    optDeploymentDep.setArtifactId(artifactId);
-                    optDeploymentDep.setVersion(version);
-                    result.add(optDeploymentDep);
-
-                    String runtimeArtifactId =
-                            artifactId.substring(0, artifactId.length() - DEPLOYMENT_SUFFIX.length());
-                    Dependency runtimeDep = new Dependency();
-                    runtimeDep.setGroupId(groupId);
-                    runtimeDep.setArtifactId(runtimeArtifactId);
-                    runtimeDep.setVersion(version);
-                    result.add(runtimeDep);
-                    continue;
-                }
-
-                // Category 2: version-less io.quarkus* dep (BOM-managed)
-                if (isVersionless && groupId != null && groupId.startsWith("io.quarkus") && !isOptional) {
-                    Dependency explicitDep = new Dependency();
-                    explicitDep.setGroupId(groupId);
-                    explicitDep.setArtifactId(artifactId);
-                    explicitDep.setVersion(version);
-                    String type = childText(depElem, "type");
-                    if (type != null) explicitDep.setType(type);
-                    result.add(explicitDep);
-                }
-            }
+            Document doc = parseXml(pomFile);
+            return extractDeploymentDeps(doc, deploymentDep, platformVersion);
         } catch (Exception e) {
             PluginLogManager.getLog()
-                    .debug("Quarkus: could not parse POM for " + deploymentDep.getArtifactId() + ": " + e.getMessage());
+                    .debug("Quarkus: could not parse POM for " + deploymentDep.getArtifactId()
+                            + ": " + e.getMessage());
+            return List.of();
+        }
+    }
+
+    private static Document parseXml(File file) throws Exception {
+        DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
+        factory.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true);
+        return factory.newDocumentBuilder().parse(file);
+    }
+
+    private static List<Dependency> extractDeploymentDeps(
+            Document doc, Dependency deploymentDep, String platformVersion) {
+        List<Dependency> result = new ArrayList<>();
+        NodeList depNodes = doc.getElementsByTagName("dependency");
+        for (int i = 0; i < depNodes.getLength(); i++) {
+            result.addAll(processPomDependency(
+                    (Element) depNodes.item(i), deploymentDep, platformVersion));
         }
         return result;
+    }
+
+    private static List<Dependency> processPomDependency(
+            Element depElem, Dependency deploymentDep, String platformVersion) {
+        String groupId = childText(depElem, "groupId");
+        String artifactId = childText(depElem, "artifactId");
+        if (groupId == null || artifactId == null) return List.of();
+
+        boolean isOptional = "true".equals(childText(depElem, "optional"));
+        String rawVersion = childText(depElem, "version");
+        boolean isVersionless = rawVersion == null || rawVersion.startsWith("${");
+
+        if (isVersionless && !groupId.startsWith("io.quarkus")) return List.of();
+
+        String version = resolveEffectiveVersion(
+                rawVersion, isVersionless, platformVersion, deploymentDep.getVersion());
+
+        if (isOptional && artifactId.endsWith(DEPLOYMENT_SUFFIX)) {
+            String runtimeArtifactId =
+                    artifactId.substring(0, artifactId.length() - DEPLOYMENT_SUFFIX.length());
+            return List.of(
+                    createDependency(groupId, artifactId, version),
+                    createDependency(groupId, runtimeArtifactId, version));
+        }
+
+        if (isVersionless && !isOptional) {
+            Dependency dep = createDependency(groupId, artifactId, version);
+            String type = childText(depElem, "type");
+            if (type != null) dep.setType(type);
+            return List.of(dep);
+        }
+
+        return List.of();
+    }
+
+    private static String resolveEffectiveVersion(
+            String rawVersion, boolean isVersionless, String platformVersion, String fallback) {
+        String version = isVersionless ? platformVersion : rawVersion;
+        if (version == null || version.startsWith("${")) {
+            version = fallback;
+        }
+        return version;
     }
 
     private static File localRepoPomFile(String localRepoBase, Dependency dep) {

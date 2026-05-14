@@ -1,7 +1,6 @@
 package io.github.chains_project.maven_lockfile.resolvers;
 
 import io.github.chains_project.maven_lockfile.reporting.PluginLogManager;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -76,19 +75,14 @@ public class SurefirePluginResolver extends SpecialPluginResolver {
             return DiscoveryResult.empty();
         }
 
-        Dependency provider = new Dependency();
-        provider.setGroupId(SUREFIRE_GROUP_ID);
-        provider.setArtifactId(providerArtifactId);
-        provider.setVersion(surefireVersion);
+        Dependency provider = createDependency(SUREFIRE_GROUP_ID, providerArtifactId, surefireVersion);
 
         PluginLogManager.getLog()
                 .info(String.format(
                         "SurefirePluginResolver: injecting %s:%s:%s into %s",
                         SUREFIRE_GROUP_ID, providerArtifactId, surefireVersion, SUREFIRE_PLUGIN_KEY));
 
-        List<Dependency> deps = new ArrayList<>();
-        deps.add(provider);
-        return DiscoveryResult.ofPluginDependencies(SUREFIRE_PLUGIN_KEY, deps);
+        return DiscoveryResult.ofPluginDependencies(SUREFIRE_PLUGIN_KEY, List.of(provider));
     }
 
     /**
@@ -104,7 +98,7 @@ public class SurefirePluginResolver extends SpecialPluginResolver {
     private static String detectProvider(MavenProject project) {
         List<String> testGroupIds = project.getDependencies().stream()
                 .filter(d -> "test".equals(d.getScope()))
-                .map(d -> d.getGroupId())
+                .map(Dependency::getGroupId)
                 .collect(Collectors.toList());
 
         for (Map.Entry<List<String>, String> entry : FRAMEWORK_PROVIDER_TABLE) {

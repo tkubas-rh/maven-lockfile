@@ -10,6 +10,7 @@ import io.github.chains_project.maven_lockfile.data.MetaData;
 import io.github.chains_project.maven_lockfile.reporting.LockFileDifference;
 import io.github.chains_project.maven_lockfile.reporting.PluginLogManager;
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.Objects;
 import org.apache.maven.plugin.MojoExecutionException;
 import org.apache.maven.plugins.annotations.LifecyclePhase;
@@ -51,7 +52,13 @@ public class ValidateChecksumMojo extends AbstractLockfileMojo {
             MetaData metaData = new MetaData(environment, config);
             AbstractChecksumCalculator checksumCalculator = getChecksumCalculator(config, true);
             LockFile lockFileFromProject = LockFileFacade.generateLockFileFromProject(
-                    session, project, dependencyCollectorBuilder, checksumCalculator, metaData, repositorySystem);
+                    session,
+                    project,
+                    dependencyCollectorBuilder,
+                    checksumCalculator,
+                    metaData,
+                    repositorySystem,
+                    new ArrayList<>(pluginResolvers));
             if (!Objects.equals(lockFileFromFile.getEnvironment(), lockFileFromProject.getEnvironment())) {
                 String sb = "Lock file environment does not match project environment.\n"
                         + "Lockfile environment: " + lockFileFromFile.getEnvironment() + "\n"

@@ -11,6 +11,7 @@ import io.github.chains_project.maven_lockfile.reporting.PluginLogManager;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import org.apache.maven.plugin.MojoExecutionException;
 import org.apache.maven.plugins.annotations.LifecyclePhase;
 import org.apache.maven.plugins.annotations.Mojo;
@@ -59,7 +60,13 @@ public class GenerateLockFileMojo extends AbstractLockfileMojo {
             }
             AbstractChecksumCalculator checksumCalculator = getChecksumCalculator(config);
             LockFile lockFile = LockFileFacade.generateLockFileFromProject(
-                    session, project, dependencyCollectorBuilder, checksumCalculator, metaData, repositorySystem);
+                    session,
+                    project,
+                    dependencyCollectorBuilder,
+                    checksumCalculator,
+                    metaData,
+                    repositorySystem,
+                    new ArrayList<>(pluginResolvers));
 
             Path lockFilePath = LockFileFacade.getLockFilePath(project, lockfileName);
             Files.writeString(lockFilePath, JsonUtils.toJson(lockFile));

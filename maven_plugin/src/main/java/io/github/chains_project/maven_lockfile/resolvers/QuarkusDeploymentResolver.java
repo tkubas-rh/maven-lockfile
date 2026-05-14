@@ -108,11 +108,11 @@ public class QuarkusDeploymentResolver extends SpecialPluginResolver {
             platformProps.setVersion(quarkusVersion);
             platformProps.setType("properties");
             addIfAbsent(deploymentDeps, seen, platformProps);
-            PluginLogManager.getLog().info(
-                    "Quarkus: adding platform-properties " + PLATFORM_PROPERTIES_ARTIFACT + ":" + quarkusVersion);
+            PluginLogManager.getLog()
+                    .info("Quarkus: adding platform-properties " + PLATFORM_PROPERTIES_ARTIFACT + ":" + quarkusVersion);
         } else {
-            PluginLogManager.getLog().warn(
-                    "Quarkus: could not determine Quarkus version — skipping platform-properties");
+            PluginLogManager.getLog()
+                    .warn("Quarkus: could not determine Quarkus version — skipping platform-properties");
         }
 
         // Phase 1: scan each resolved JAR for META-INF/quarkus-extension.properties
@@ -128,8 +128,8 @@ public class QuarkusDeploymentResolver extends SpecialPluginResolver {
 
                 String[] parts = deploymentGav.split(":");
                 if (parts.length < 3) {
-                    PluginLogManager.getLog().warn(
-                            "Quarkus: malformed deployment-artifact value in " + artifact + ": " + deploymentGav);
+                    PluginLogManager.getLog()
+                            .warn("Quarkus: malformed deployment-artifact value in " + artifact + ": " + deploymentGav);
                     continue;
                 }
 
@@ -139,18 +139,19 @@ public class QuarkusDeploymentResolver extends SpecialPluginResolver {
                 dep.setVersion(parts[2]);
                 if (addIfAbsent(deploymentDeps, seen, dep)) {
                     primaryDeploymentDeps.add(dep);
-                    PluginLogManager.getLog().debug(
-                            "Quarkus: discovered deployment artifact " + deploymentGav
-                                    + " (from " + artifact.getArtifactId() + ")");
+                    PluginLogManager.getLog()
+                            .debug("Quarkus: discovered deployment artifact " + deploymentGav + " (from "
+                                    + artifact.getArtifactId() + ")");
                 }
             } catch (IOException e) {
-                PluginLogManager.getLog().debug(
-                        "Quarkus: could not read " + artifactFile.getName() + ": " + e.getMessage());
+                PluginLogManager.getLog()
+                        .debug("Quarkus: could not read " + artifactFile.getName() + ": " + e.getMessage());
             }
         }
 
-        PluginLogManager.getLog().info(String.format(
-                "Quarkus: discovered %d primary deployment artifact(s)", primaryDeploymentDeps.size()));
+        PluginLogManager.getLog()
+                .info(String.format(
+                        "Quarkus: discovered %d primary deployment artifact(s)", primaryDeploymentDeps.size()));
 
         // Phase 2: for each primary deployment artifact, read its POM to find:
         //   a) optional "conditional" *-deployment deps + their runtime counterparts
@@ -164,16 +165,16 @@ public class QuarkusDeploymentResolver extends SpecialPluginResolver {
         while (!toScan.isEmpty()) {
             List<Dependency> nextScan = new ArrayList<>();
             for (Dependency deploymentDep : toScan) {
-                String scanKey = deploymentDep.getGroupId() + ":" + deploymentDep.getArtifactId()
-                        + ":" + deploymentDep.getVersion();
+                String scanKey = deploymentDep.getGroupId() + ":" + deploymentDep.getArtifactId() + ":"
+                        + deploymentDep.getVersion();
                 if (!scanned.add(scanKey)) continue;
 
                 List<Dependency> pomDeps = discoverDeploymentPomDeps(deploymentDep, localRepoBase, quarkusVersion);
                 for (Dependency pd : pomDeps) {
                     if (addIfAbsent(deploymentDeps, seen, pd)) {
                         extraCount++;
-                        PluginLogManager.getLog().debug(
-                                "Quarkus: adding POM dep " + pd.getArtifactId()
+                        PluginLogManager.getLog()
+                                .debug("Quarkus: adding POM dep " + pd.getArtifactId()
                                         + ":" + pd.getVersion()
                                         + " (from " + deploymentDep.getArtifactId() + ")");
                         // Queue newly discovered deployment artifacts for POM scanning too.
@@ -186,9 +187,8 @@ public class QuarkusDeploymentResolver extends SpecialPluginResolver {
             toScan = nextScan;
         }
 
-        PluginLogManager.getLog().info(String.format(
-                "Quarkus: added %d extra artifact(s) from deployment POM scanning",
-                extraCount));
+        PluginLogManager.getLog()
+                .info(String.format("Quarkus: added %d extra artifact(s) from deployment POM scanning", extraCount));
         return deploymentDeps;
     }
 
@@ -244,8 +244,8 @@ public class QuarkusDeploymentResolver extends SpecialPluginResolver {
                     optDeploymentDep.setVersion(version);
                     result.add(optDeploymentDep);
 
-                    String runtimeArtifactId = artifactId.substring(
-                            0, artifactId.length() - DEPLOYMENT_SUFFIX.length());
+                    String runtimeArtifactId =
+                            artifactId.substring(0, artifactId.length() - DEPLOYMENT_SUFFIX.length());
                     Dependency runtimeDep = new Dependency();
                     runtimeDep.setGroupId(groupId);
                     runtimeDep.setArtifactId(runtimeArtifactId);
@@ -266,8 +266,8 @@ public class QuarkusDeploymentResolver extends SpecialPluginResolver {
                 }
             }
         } catch (Exception e) {
-            PluginLogManager.getLog().debug(
-                    "Quarkus: could not parse POM for " + deploymentDep.getArtifactId() + ": " + e.getMessage());
+            PluginLogManager.getLog()
+                    .debug("Quarkus: could not parse POM for " + deploymentDep.getArtifactId() + ": " + e.getMessage());
         }
         return result;
     }
@@ -275,9 +275,15 @@ public class QuarkusDeploymentResolver extends SpecialPluginResolver {
     private static File localRepoPomFile(String localRepoBase, Dependency dep) {
         String groupPath = dep.getGroupId().replace('.', File.separatorChar);
         String fileName = dep.getArtifactId() + "-" + dep.getVersion() + ".pom";
-        return new File(localRepoBase,
-                groupPath + File.separator + dep.getArtifactId()
-                        + File.separator + dep.getVersion() + File.separator + fileName);
+        return new File(
+                localRepoBase,
+                groupPath
+                        + File.separator
+                        + dep.getArtifactId()
+                        + File.separator
+                        + dep.getVersion()
+                        + File.separator
+                        + fileName);
     }
 
     private static String readDeploymentArtifact(File jarFile) throws IOException {
@@ -295,8 +301,7 @@ public class QuarkusDeploymentResolver extends SpecialPluginResolver {
 
     private static String findQuarkusVersion(MavenProject project) {
         return project.getArtifacts().stream()
-                .filter(a -> "io.quarkus".equals(a.getGroupId())
-                        && "quarkus-core".equals(a.getArtifactId()))
+                .filter(a -> "io.quarkus".equals(a.getGroupId()) && "quarkus-core".equals(a.getArtifactId()))
                 .map(Artifact::getVersion)
                 .findFirst()
                 .orElse(null);

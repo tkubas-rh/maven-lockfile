@@ -874,7 +874,8 @@ public class IntegrationTestsIT {
 
         assertThat(surefirePlugin.get().getDependencies())
                 .as("maven-surefire-plugin should contain surefire-junit-platform injected by SurefirePluginResolver")
-                .anyMatch(dep -> "surefire-junit-platform".equals(dep.getArtifactId().getValue())
+                .anyMatch(dep -> "surefire-junit-platform"
+                                .equals(dep.getArtifactId().getValue())
                         && "org.apache.maven.surefire".equals(dep.getGroupId().getValue()));
     }
 
@@ -920,8 +921,7 @@ public class IntegrationTestsIT {
                         || p.getArtifactId().getValue().contains("quarkus"));
 
         // No Quarkus artifacts injected into the dependency tree
-        assertThat(lockFile.getDependencies().stream()
-                        .flatMap(v -> flattenDependencies(v).stream()))
+        assertThat(lockFile.getDependencies().stream().flatMap(v -> flattenDependencies(v).stream()))
                 .as("lockfile dependencies should not contain any quarkus artifacts")
                 .noneMatch(dep -> dep.getGroupId().getValue().contains("quarkus")
                         || dep.getArtifactId().getValue().contains("quarkus"));
@@ -943,11 +943,36 @@ public class IntegrationTestsIT {
                 .anyMatch(dep -> "spoon-core".equals(dep.getArtifactId().getValue()));
 
         // No protobuf or protoc artifacts injected
-        assertThat(lockFile.getDependencies().stream()
-                        .flatMap(v -> flattenDependencies(v).stream()))
+        assertThat(lockFile.getDependencies().stream().flatMap(v -> flattenDependencies(v).stream()))
                 .as("lockfile dependencies should not contain any protobuf artifacts")
                 .noneMatch(dep -> dep.getGroupId().getValue().contains("protobuf")
                         || "protoc".equals(dep.getArtifactId().getValue()));
+    }
+
+    @MavenTest
+    public void configurablePluginResolver(MavenExecutionResult result) throws Exception {
+        // contract: when <pluginResolvers> is configured in the lockfile plugin, ConfigurablePluginResolver
+        // injects the declared dependencies into the target plugin's recorded dependency set in the
+        // lockfile — even though they are not declared in the target plugin's own configuration.
+        System.out.println("Running 'configurablePluginResolver' integration test.");
+        assertThat(result).isSuccessful();
+        Path lockFilePath = findFile(result, "lockfile.json");
+        assertThat(lockFilePath).exists();
+        var lockFile = LockFile.readLockFile(lockFilePath);
+
+        var protobufPlugin = lockFile.getMavenPlugins().stream()
+                .filter(p -> "protobuf-maven-plugin".equals(p.getArtifactId().getValue())
+                        && "io.github.ascopes".equals(p.getGroupId().getValue()))
+                .findFirst();
+        assertThat(protobufPlugin)
+                .as("protobuf-maven-plugin should be recorded in the lockfile")
+                .isPresent();
+
+        assertThat(protobufPlugin.get().getDependencies())
+                .as("protobuf-maven-plugin should include protoc-gen-grpc-java injected by ConfigurablePluginResolver")
+                .anyMatch(
+                        dep -> "protoc-gen-grpc-java".equals(dep.getArtifactId().getValue())
+                                && "io.grpc".equals(dep.getGroupId().getValue()));
     }
 
     @MavenTest

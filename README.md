@@ -95,6 +95,60 @@ The flags are passed by the maven [`-D` (`--define`)](https://books.sonatype.com
 mvn io.github.chains-project:maven-lockfile:generate -DincludeMavenPlugins=true -DlockfileName=my-lockfile.json
 ```
 
+## Resolving undeclared plugin dependencies
+
+Some Maven build plugins load additional artifacts at runtime that are not listed in the project's `<dependencies>` — for example, a code-generator plugin that downloads a language-specific binary at build time. Without recording these artifacts the lockfile is incomplete and hermetic offline builds may fail.
+
+Maven Lockfile already handles several common plugins automatically (Quarkus, maven-surefire-plugin, maven-compiler-plugin annotation processors, protobuf-maven-plugin). For any other plugin you can declare the extra dependencies directly in the lockfile plugin's `<configuration>` block using `<pluginResolvers>`:
+
+```xml
+<plugin>
+  <groupId>io.github.chains-project</groupId>
+  <artifactId>maven-lockfile</artifactId>
+  <version>VERSION</version>
+  <configuration>
+    <pluginResolvers>
+      <pluginResolver>
+        <!-- groupId and artifactId identify the target plugin in the build -->
+        <groupId>com.example</groupId>
+        <artifactId>my-codegen-plugin</artifactId>
+
+        <!-- optional: label shown in Maven build output -->
+        <displayName>my-codegen-plugin (runtime schemas)</displayName>
+
+        <!-- dependencies to inject into the plugin's recorded dependency set -->
+        <dependencies>
+          <dependency>
+            <groupId>com.example</groupId>
+            <artifactId>schema-pack</artifactId>
+            <version>3.1.0</version>
+          </dependency>
+        </dependencies>
+      </pluginResolver>
+    </pluginResolvers>
+  </configuration>
+</plugin>
+```
+
+Each `<pluginResolver>` entry is only activated when its target plugin (`<groupId>` + `<artifactId>`) is present in the project's build. You can declare multiple entries to cover multiple plugins.
+
+**`<forceDependencyPopulation>`** — set this to `true` inside a `<pluginResolver>` if the injected artifacts are loaded in a separate classloader (e.g. annotation processors), so their full transitive closure is resolved independently of the project's main dependency graph:
+
+```xml
+<pluginResolver>
+  <groupId>org.example</groupId>
+  <artifactId>my-processor-plugin</artifactId>
+  <dependencies>
+    <dependency>
+      <groupId>org.example</groupId>
+      <artifactId>my-processor</artifactId>
+      <version>1.0.0</version>
+    </dependency>
+  </dependencies>
+  <forceDependencyPopulation>true</forceDependencyPopulation>
+</pluginResolver>
+```
+
 ## Format
 
 An example lockfile is shown below. Note that large parts of it has been minimzed to `{...}` for readability.

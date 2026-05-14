@@ -40,11 +40,10 @@ public final class PluginConfigResolver extends SpecialPluginResolver {
      */
     @FunctionalInterface
     public interface Rule {
-        void apply(Xpp3Dom config, MavenProject project,
-                   List<Dependency> depsOut, List<String> specsOut);
+        void apply(Xpp3Dom config, MavenProject project, List<Dependency> depsOut, List<String> specsOut);
     }
 
-    private final String pluginGroupId;   // null = match by artifactId only
+    private final String pluginGroupId; // null = match by artifactId only
     private final String pluginArtifactId;
     private final String pluginKey;
     private final String displayName;
@@ -52,15 +51,10 @@ public final class PluginConfigResolver extends SpecialPluginResolver {
     private final List<Rule> rules;
 
     private PluginConfigResolver(
-            String pluginGroupId,
-            String pluginArtifactId,
-            String displayName,
-            boolean force,
-            List<Rule> rules) {
+            String pluginGroupId, String pluginArtifactId, String displayName, boolean force, List<Rule> rules) {
         this.pluginGroupId = pluginGroupId;
         this.pluginArtifactId = pluginArtifactId;
-        this.pluginKey = (pluginGroupId != null ? pluginGroupId : "org.apache.maven.plugins")
-                + ":" + pluginArtifactId;
+        this.pluginKey = (pluginGroupId != null ? pluginGroupId : "org.apache.maven.plugins") + ":" + pluginArtifactId;
         this.displayName = displayName;
         this.force = force;
         this.rules = List.copyOf(rules);
@@ -102,13 +96,13 @@ public final class PluginConfigResolver extends SpecialPluginResolver {
         }
 
         if (!deps.isEmpty()) {
-            PluginLogManager.getLog().info(String.format(
-                    "%s: injecting %d artifact(s) into %s", displayName, deps.size(), pluginKey));
+            PluginLogManager.getLog()
+                    .info(String.format("%s: injecting %d artifact(s) into %s", displayName, deps.size(), pluginKey));
             return DiscoveryResult.ofPluginDependencies(pluginKey, deps);
         }
         if (!specs.isEmpty()) {
-            PluginLogManager.getLog().info(String.format(
-                    "%s: discovered %d platform artifact spec(s)", displayName, specs.size()));
+            PluginLogManager.getLog()
+                    .info(String.format("%s: discovered %d platform artifact spec(s)", displayName, specs.size()));
             return DiscoveryResult.ofPlatformArtifacts(specs);
         }
         return DiscoveryResult.empty();
@@ -199,20 +193,22 @@ public final class PluginConfigResolver extends SpecialPluginResolver {
             Xpp3Dom container = config.getChild(containerElement);
             if (container == null) return;
             for (Xpp3Dom item : container.getChildren(itemElement)) {
-                String groupId   = childValue(item, "groupId",    project);
+                String groupId = childValue(item, "groupId", project);
                 String artifactId = childValue(item, "artifactId", project);
-                String version   = childValue(item, "version",    project);
+                String version = childValue(item, "version", project);
                 if (groupId == null || artifactId == null || version == null) {
-                    PluginLogManager.getLog().warn(String.format(
-                            "PluginConfigResolver: skipping <%s> with missing GAV"
-                                    + " (groupId=%s artifactId=%s version=%s)",
-                            itemElement, groupId, artifactId, version));
+                    PluginLogManager.getLog()
+                            .warn(String.format(
+                                    "PluginConfigResolver: skipping <%s> with missing GAV"
+                                            + " (groupId=%s artifactId=%s version=%s)",
+                                    itemElement, groupId, artifactId, version));
                     continue;
                 }
                 if (version.startsWith("${")) {
-                    PluginLogManager.getLog().warn(String.format(
-                            "PluginConfigResolver: unresolved version %s for %s:%s — skipping",
-                            version, groupId, artifactId));
+                    PluginLogManager.getLog()
+                            .warn(String.format(
+                                    "PluginConfigResolver: unresolved version %s for %s:%s — skipping",
+                                    version, groupId, artifactId));
                     continue;
                 }
                 Dependency dep = new Dependency();
@@ -240,8 +236,7 @@ public final class PluginConfigResolver extends SpecialPluginResolver {
      * </configuration>
      * }</pre>
      */
-    public static Rule singleValueToSpec(
-            String element, String fixedGroupId, String fixedArtifactId, String type) {
+    public static Rule singleValueToSpec(String element, String fixedGroupId, String fixedArtifactId, String type) {
         return (config, project, deps, specs) -> {
             Xpp3Dom elem = config.getChild(element);
             if (elem == null || elem.getValue() == null) return;
@@ -275,21 +270,20 @@ public final class PluginConfigResolver extends SpecialPluginResolver {
      * }</pre>
      */
     public static Rule filteredGavListToSpecs(
-            String containerElement, String itemElement,
-            String attrName, String attrValue,
-            String type) {
+            String containerElement, String itemElement, String attrName, String attrValue, String type) {
         return (config, project, deps, specs) -> {
             Xpp3Dom container = config.getChild(containerElement);
             if (container == null) return;
             for (Xpp3Dom item : container.getChildren(itemElement)) {
                 if (!attrValue.equals(item.getAttribute(attrName))) continue;
-                String groupId    = childValue(item, "groupId",    project);
+                String groupId = childValue(item, "groupId", project);
                 String artifactId = childValue(item, "artifactId", project);
-                String version    = childValue(item, "version",    project);
+                String version = childValue(item, "version", project);
                 if (groupId == null || artifactId == null || version == null) {
-                    PluginLogManager.getLog().warn(String.format(
-                            "PluginConfigResolver: skipping <%s %s=%s> with missing GAV",
-                            itemElement, attrName, attrValue));
+                    PluginLogManager.getLog()
+                            .warn(String.format(
+                                    "PluginConfigResolver: skipping <%s %s=%s> with missing GAV",
+                                    itemElement, attrName, attrValue));
                     continue;
                 }
                 specs.add(groupId + ":" + artifactId + ":" + type + ":" + version);

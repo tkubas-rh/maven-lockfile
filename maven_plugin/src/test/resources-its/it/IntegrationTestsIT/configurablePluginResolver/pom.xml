@@ -1,0 +1,61 @@
+<project>
+  <modelVersion>4.0.0</modelVersion>
+
+  <groupId>com.mycompany.app</groupId>
+  <artifactId>configurable-resolver-test</artifactId>
+  <packaging>jar</packaging>
+  <version>1</version>
+
+  <properties>
+    <maven.compiler.target>11</maven.compiler.target>
+    <maven.compiler.source>11</maven.compiler.source>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    <grpc.version>1.65.0</grpc.version>
+  </properties>
+
+  <build>
+    <plugins>
+      <!-- Target plugin: present in the build so ConfigurablePluginResolver#isApplicable returns true,
+           but has no <plugins> config so the static PluginConfigResolver for protobuf-maven-plugin
+           would not inject grpc-java. ConfigurablePluginResolver injects it instead. -->
+      <plugin>
+        <groupId>io.github.ascopes</groupId>
+        <artifactId>protobuf-maven-plugin</artifactId>
+        <version>5.0.0</version>
+      </plugin>
+
+      <plugin>
+        <groupId>io.github.chains-project</groupId>
+        <artifactId>maven-lockfile</artifactId>
+        <version>@project.version@</version>
+        <executions>
+          <execution>
+            <goals>
+              <goal>generate</goal>
+            </goals>
+          </execution>
+        </executions>
+        <configuration>
+          <checksumMode>local</checksumMode>
+          <includeMavenPlugins>true</includeMavenPlugins>
+          <pluginResolvers>
+            <pluginResolver>
+              <groupId>io.github.ascopes</groupId>
+              <artifactId>protobuf-maven-plugin</artifactId>
+              <displayName>protobuf-maven-plugin (gRPC Java)</displayName>
+              <dependencies>
+                <dependency>
+                  <groupId>io.grpc</groupId>
+                  <artifactId>protoc-gen-grpc-java</artifactId>
+                  <version>1.81.0</version>
+                  <type>exe</type>
+                  <classifier>${os.detected.classifier}</classifier>
+                </dependency>
+              </dependencies>
+            </pluginResolver>
+          </pluginResolvers>
+        </configuration>
+      </plugin>
+    </plugins>
+  </build>
+</project>

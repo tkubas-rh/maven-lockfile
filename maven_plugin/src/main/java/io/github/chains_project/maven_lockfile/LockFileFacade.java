@@ -66,8 +66,7 @@ public class LockFileFacade {
                     .build(),
             PluginConfigResolver.builder("io.github.ascopes", "protobuf-maven-plugin")
                     .displayName("protobuf-maven-plugin")
-                    .addRule(PluginConfigResolver.singleValueToSpec(
-                            "protoc", "com.google.protobuf", "protoc", "exe"))
+                    .addRule(PluginConfigResolver.singleValueToSpec("protoc", "com.google.protobuf", "protoc", "exe"))
                     .addRule(PluginConfigResolver.filteredGavListToSpecs(
                             "plugins", "plugin", "kind", "binary-maven", "exe"))
                     .build());
@@ -130,7 +129,10 @@ public class LockFileFacade {
             DependencyCollectorBuilder dependencyCollectorBuilder,
             AbstractChecksumCalculator checksumCalculator,
             MetaData metadata,
-            RepositorySystem repositorySystem) {
+            RepositorySystem repositorySystem,
+            List<SpecialPluginResolver> additionalResolvers) {
+        List<SpecialPluginResolver> allResolvers = new ArrayList<>(PLUGIN_RESOLVERS);
+        allResolvers.addAll(additionalResolvers);
         PluginLogManager.getLog().info(String.format("Generating lock file for project %s", project.getArtifactId()));
 
         // Phase 1: attach a recording RepositoryListener to a mutable session copy.
@@ -142,7 +144,7 @@ public class LockFileFacade {
 
         Set<MavenPlugin> plugins = new TreeSet<>();
         if (metadata.getConfig().isIncludeMavenPlugins()) {
-            plugins = getAllPlugins(project, session, dependencyCollectorBuilder, checksumCalculator);
+            plugins = getAllPlugins(project, session, dependencyCollectorBuilder, checksumCalculator, allResolvers);
         }
 
         Set<MavenExtension> extensions =
@@ -163,7 +165,7 @@ public class LockFileFacade {
         // Force-resolve annotation processor artifacts (and other forceDependencyPopulation resolvers)
         // as standalone roots so their full unmediated transitive closure is captured.
         roots.addAll(resolveSpecialPluginDependencies(
-                project, session, dependencyCollectorBuilder, checksumCalculator));
+                project, session, dependencyCollectorBuilder, checksumCalculator, allResolvers));
 
         // Collect platform artifact specs from all applicable resolvers and resolve them
         // to platform-classifier DependencyNode entries (e.g. protoc:linux-x86_64).
@@ -388,7 +390,8 @@ public class LockFileFacade {
             MavenProject project,
             MavenSession session,
             DependencyCollectorBuilder dependencyCollectorBuilder,
-            AbstractChecksumCalculator checksumCalculator) {
+            AbstractChecksumCalculator checksumCalculator,
+            List<SpecialPluginResolver> resolvers) {
         Set<MavenPlugin> plugins = new TreeSet<>();
 
         // Build a map of user-declared plugin dependencies (mutable lists so resolvers can inject)
@@ -405,17 +408,15 @@ public class LockFileFacade {
         }
 
         // Run all registered special plugin resolvers to inject additional plugin dependencies
-        for (SpecialPluginResolver resolver : PLUGIN_RESOLVERS) {
+        for (SpecialPluginResolver resolver : resolvers) {
             if (!resolver.isApplicable(project)) continue;
-            PluginLogManager.getLog()
-                    .info(resolver.getDisplayName() + " detected — running special plugin resolver");
+            PluginLogManager.getLog().info(resolver.getDisplayName() + " detected — running special plugin resolver");
             SpecialPluginResolver.DiscoveryResult result = resolver.discover(project, session);
             if (result.isEmpty()) continue;
             for (Map.Entry<String, List<Dependency>> entry :
                     result.getPluginDependencies().entrySet()) {
                 String pluginKey = entry.getKey();
-                List<Dependency> existing =
-                        userPluginDependencies.computeIfAbsent(pluginKey, k -> new ArrayList<>());
+                List<Dependency> existing = userPluginDependencies.computeIfAbsent(pluginKey, k -> new ArrayList<>());
                 Set<String> existingGas = new HashSet<>();
                 for (Dependency d : existing) existingGas.add(d.getGroupId() + ":" + d.getArtifactId());
                 for (Dependency dep : entry.getValue()) {
@@ -702,18 +703,17 @@ public class LockFileFacade {
      * classloader is independent of the project's dependency graph — every artifact must be
      * present regardless of the project-level conflict winner.
      */
-    private static Set<io.github.chains_project.maven_lockfile.graph.DependencyNode>
-            resolveSpecialPluginDependencies(
-                    MavenProject project,
-                    MavenSession session,
-                    DependencyCollectorBuilder dependencyCollectorBuilder,
-                    AbstractChecksumCalculator checksumCalculator) {
-        Set<io.github.chains_project.maven_lockfile.graph.DependencyNode> allRoots = new TreeSet<>(
-                Comparator.comparing(
-                        io.github.chains_project.maven_lockfile.graph.DependencyNode::getComparatorString));
+    private static Set<io.github.chains_project.maven_lockfile.graph.DependencyNode> resolveSpecialPluginDependencies(
+            MavenProject project,
+            MavenSession session,
+            DependencyCollectorBuilder dependencyCollectorBuilder,
+            AbstractChecksumCalculator checksumCalculator,
+            List<SpecialPluginResolver> resolvers) {
+        Set<io.github.chains_project.maven_lockfile.graph.DependencyNode> allRoots = new TreeSet<>(Comparator.comparing(
+                io.github.chains_project.maven_lockfile.graph.DependencyNode::getComparatorString));
         ProjectBuilder projectBuilder = new ProjectBuilder(session, project.getPluginArtifactRepositories());
 
-        for (SpecialPluginResolver resolver : PLUGIN_RESOLVERS) {
+        for (SpecialPluginResolver resolver : resolvers) {
             if (!resolver.isApplicable(project)) continue;
             if (!resolver.forceDependencyPopulation()) continue;
 
@@ -722,13 +722,12 @@ public class LockFileFacade {
 
             PluginLogManager.getLog()
                     .info(String.format(
-                            "%s: force-resolving discovered artifacts as standalone roots",
-                            resolver.getDisplayName()));
+                            "%s: force-resolving discovered artifacts as standalone roots", resolver.getDisplayName()));
 
             for (List<Dependency> deps : result.getPluginDependencies().values()) {
                 for (Dependency dep : deps) {
-                    Optional<MavenProject> depProjectOpt = projectBuilder.buildFromGav(
-                            dep.getGroupId(), dep.getArtifactId(), dep.getVersion());
+                    Optional<MavenProject> depProjectOpt =
+                            projectBuilder.buildFromGav(dep.getGroupId(), dep.getArtifactId(), dep.getVersion());
                     if (depProjectOpt.isEmpty()) {
                         PluginLogManager.getLog()
                                 .warn(String.format(

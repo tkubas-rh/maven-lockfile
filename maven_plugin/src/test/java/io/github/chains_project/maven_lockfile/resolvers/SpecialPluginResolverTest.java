@@ -28,13 +28,12 @@ class SpecialPluginResolverTest {
         dep.setArtifactId("example-lib");
         dep.setVersion("1.0.0");
 
-        var result = SpecialPluginResolver.DiscoveryResult.ofPluginDependencies(
-                "org.example:example-plugin", List.of(dep));
+        var result =
+                SpecialPluginResolver.DiscoveryResult.ofPluginDependencies("org.example:example-plugin", List.of(dep));
 
         assertThat(result.isEmpty()).isFalse();
         assertThat(result.getPlatformArtifactSpecs()).isEmpty();
-        assertThat(result.getPluginDependencies())
-                .containsKey("org.example:example-plugin");
+        assertThat(result.getPluginDependencies()).containsKey("org.example:example-plugin");
         assertThat(result.getPluginDependencies().get("org.example:example-plugin"))
                 .hasSize(1)
                 .first()
@@ -47,17 +46,13 @@ class SpecialPluginResolverTest {
 
     @Test
     void platformArtifactsResultIsNotEmpty() {
-        var specs = List.of(
-                "com.google.protobuf:protoc:exe:3.25.5",
-                "io.grpc:protoc-gen-grpc-java:exe:1.68.0");
+        var specs = List.of("com.google.protobuf:protoc:exe:3.25.5", "io.grpc:protoc-gen-grpc-java:exe:1.68.0");
 
         var result = SpecialPluginResolver.DiscoveryResult.ofPlatformArtifacts(specs);
 
         assertThat(result.isEmpty()).isFalse();
         assertThat(result.getPluginDependencies()).isEmpty();
-        assertThat(result.getPlatformArtifactSpecs())
-                .hasSize(2)
-                .containsExactlyInAnyOrderElementsOf(specs);
+        assertThat(result.getPlatformArtifactSpecs()).hasSize(2).containsExactlyInAnyOrderElementsOf(specs);
     }
 
     @Test
@@ -76,8 +71,7 @@ class SpecialPluginResolverTest {
 
             @Override
             public DiscoveryResult discover(
-                    org.apache.maven.project.MavenProject project,
-                    org.apache.maven.execution.MavenSession session) {
+                    org.apache.maven.project.MavenProject project, org.apache.maven.execution.MavenSession session) {
                 return DiscoveryResult.empty();
             }
         };

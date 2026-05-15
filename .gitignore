@@ -29,4 +29,6 @@ out/
 *.versionsBackup
 *.log
 .mvn/.gradle-enterprise/gradle-enterprise-workspace-id
+.mvn/build-recorded-artifacts.json
+.mvn/tracker-artifacts.json
 JRELEASER_VERSION

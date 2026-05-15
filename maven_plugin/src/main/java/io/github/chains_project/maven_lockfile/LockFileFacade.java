@@ -10,6 +10,7 @@ import io.github.chains_project.maven_lockfile.data.P2Repository;
 import io.github.chains_project.maven_lockfile.graph.DependencyGraph;
 import io.github.chains_project.maven_lockfile.reporting.PluginLogManager;
 import io.github.chains_project.maven_lockfile.resolvers.BomResolver;
+import io.github.chains_project.maven_lockfile.resolvers.BuildRecordedArtifacts;
 import io.github.chains_project.maven_lockfile.resolvers.ExtraArtifactResolver;
 import io.github.chains_project.maven_lockfile.resolvers.P2Resolver;
 import io.github.chains_project.maven_lockfile.resolvers.PlatformArtifactResolver;
@@ -34,11 +35,11 @@ import org.apache.maven.model.Plugin;
 import org.apache.maven.project.DefaultProjectBuildingRequest;
 import org.apache.maven.project.MavenProject;
 import org.apache.maven.project.ProjectBuildingRequest;
-import org.eclipse.aether.DefaultRepositorySystemSession;
 import org.apache.maven.shared.dependency.graph.DependencyCollectorBuilder;
 import org.apache.maven.shared.dependency.graph.DependencyCollectorBuilderException;
 import org.apache.maven.shared.dependency.graph.DependencyNode;
 import org.apache.maven.shared.dependency.graph.traversal.DependencyNodeVisitor;
+import org.eclipse.aether.DefaultRepositorySystemSession;
 import org.eclipse.aether.RepositorySystem;
 import org.eclipse.aether.RepositorySystemSession;
 import org.eclipse.aether.collection.CollectRequest;
@@ -180,9 +181,10 @@ public class LockFileFacade {
             if (osClassifier != null) {
                 roots.addAll(PlatformArtifactResolver.resolve(platformSpecs, osClassifier, checksumCalculator));
             } else {
-                PluginLogManager.getLog().warn(String.format(
-                        "PlatformArtifacts: found %d spec(s) but could not determine OS classifier — skipping",
-                        platformSpecs.size()));
+                PluginLogManager.getLog()
+                        .warn(String.format(
+                                "PlatformArtifacts: found %d spec(s) but could not determine OS classifier — skipping",
+                                platformSpecs.size()));
             }
         }
 
@@ -199,10 +201,28 @@ public class LockFileFacade {
                 ExtraArtifactResolver.extractExtras(extraTracker, alreadyRecordedGavts, checksumCalculator);
         roots.addAll(extraNodes);
 
+        // Phase 3: read build-recorded artifacts written by the maven-lockfile-recorder extension.
+        // The extension captures every artifact resolution across the entire build lifecycle,
+        // covering plugins like surefire, quarkus, etc. that resolve artifacts dynamically.
+        java.io.File buildRecordedFile = new java.io.File(
+                session.getRequest().getMultiModuleProjectDirectory(), ".mvn/build-recorded-artifacts.json");
+        if (buildRecordedFile.exists()) {
+            Set<String> updatedGavts = new HashSet<>(alreadyRecordedGavts);
+            for (io.github.chains_project.maven_lockfile.graph.DependencyNode extra : extraNodes) {
+                updatedGavts.add(extra.getGroupId() + ":" + extra.getArtifactId() + ":" + extra.getVersion() + ":"
+                        + extra.getType());
+            }
+            @SuppressWarnings("deprecation")
+            String localRepoBase = session.getLocalRepository().getBasedir();
+            List<io.github.chains_project.maven_lockfile.graph.DependencyNode> buildRecordedNodes =
+                    BuildRecordedArtifacts.loadFromFile(
+                            buildRecordedFile, updatedGavts, checksumCalculator, localRepoBase);
+            roots.addAll(buildRecordedNodes);
+        }
+
         // Write tracker JSON so all captured artifacts are available for diagnostics.
-        java.io.File trackerOutputFile = new java.io.File(
-                session.getRequest().getMultiModuleProjectDirectory(),
-                ".mvn/tracker-artifacts.json");
+        java.io.File trackerOutputFile =
+                new java.io.File(session.getRequest().getMultiModuleProjectDirectory(), ".mvn/tracker-artifacts.json");
         extraTracker.writeToFile(trackerOutputFile);
 
         // Resolve P2/OSGi dependencies for Tycho projects (no-op for non-Tycho projects).
@@ -213,9 +233,10 @@ public class LockFileFacade {
             P2Resolver.P2ResolverResult p2Result = P2Resolver.resolve(project);
             p2Dependencies = p2Result.getArtifacts();
             p2Repositories = p2Result.getRepositories();
-            PluginLogManager.getLog().info(String.format(
-                    "P2: resolved %d artifact(s) from %d repository(ies)",
-                    p2Dependencies.size(), p2Repositories.size()));
+            PluginLogManager.getLog()
+                    .info(String.format(
+                            "P2: resolved %d artifact(s) from %d repository(ies)",
+                            p2Dependencies.size(), p2Repositories.size()));
         }
 
         return new LockFile(
@@ -782,33 +803,25 @@ public class LockFileFacade {
      * duplicating artifacts that are already captured in the dependency graph, plugin list, or BOMs.
      */
     private static Set<String> buildRecordedGavts(
-            DependencyGraph dependencyGraph,
-            Set<MavenPlugin> plugins,
-            Set<Pom> boms) {
+            DependencyGraph dependencyGraph, Set<MavenPlugin> plugins, Set<Pom> boms) {
         Set<String> gavts = new HashSet<>();
 
         // All nodes in the dependency graph (roots + transitive children)
-        for (io.github.chains_project.maven_lockfile.graph.DependencyNode node
-                : dependencyGraph.getDependencySet()) {
-            gavts.add(node.getGroupId() + ":" + node.getArtifactId()
-                    + ":" + node.getVersion() + ":" + node.getType());
+        for (io.github.chains_project.maven_lockfile.graph.DependencyNode node : dependencyGraph.getDependencySet()) {
+            gavts.add(node.getGroupId() + ":" + node.getArtifactId() + ":" + node.getVersion() + ":" + node.getType());
         }
 
         // Plugin JARs recorded in the plugin section
         for (MavenPlugin plugin : plugins) {
-            gavts.add(plugin.getGroupId() + ":" + plugin.getArtifactId()
-                    + ":" + plugin.getVersion() + ":jar");
-            for (io.github.chains_project.maven_lockfile.graph.DependencyNode dep
-                    : plugin.getDependencies()) {
-                gavts.add(dep.getGroupId() + ":" + dep.getArtifactId()
-                        + ":" + dep.getVersion() + ":" + dep.getType());
+            gavts.add(plugin.getGroupId() + ":" + plugin.getArtifactId() + ":" + plugin.getVersion() + ":jar");
+            for (io.github.chains_project.maven_lockfile.graph.DependencyNode dep : plugin.getDependencies()) {
+                gavts.add(dep.getGroupId() + ":" + dep.getArtifactId() + ":" + dep.getVersion() + ":" + dep.getType());
             }
         }
 
         // BOM POMs recorded in the boms section
         for (Pom bom : boms) {
-            gavts.add(bom.getGroupId() + ":" + bom.getArtifactId()
-                    + ":" + bom.getVersion() + ":pom");
+            gavts.add(bom.getGroupId() + ":" + bom.getArtifactId() + ":" + bom.getVersion() + ":pom");
         }
 
         return gavts;

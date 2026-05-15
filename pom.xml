@@ -30,6 +30,7 @@
   </developers>
   <modules>
     <module>maven_plugin</module>
+    <module>recorder_extension</module>
   </modules>
   <scm>
     <connection>scm:git:https://github.com/chains-project/maven-lockfile</connection>

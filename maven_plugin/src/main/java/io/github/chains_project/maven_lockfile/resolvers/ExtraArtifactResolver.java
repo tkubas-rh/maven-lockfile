@@ -79,8 +79,7 @@ public class ExtraArtifactResolver {
                 (DefaultRepositorySystemSession) mavenSession.getRepositorySession();
 
         // Create a fresh, MUTABLE copy — setRepositoryListener is allowed on this instance.
-        DefaultRepositorySystemSession mutableSession =
-                new DefaultRepositorySystemSession(originalSession);
+        DefaultRepositorySystemSession mutableSession = new DefaultRepositorySystemSession(originalSession);
 
         @SuppressWarnings("deprecation")
         String localRepoBase = mavenSession.getLocalRepository().getBasedir();
@@ -108,19 +107,21 @@ public class ExtraArtifactResolver {
 
                 if (sourceRepo != null) {
                     String key = artifactKey(artifact);
-                    capturedArtifacts.putIfAbsent(key,
-                            new CapturedArtifact(artifact, event.getFile(), sourceRepo));
-                    PluginLogManager.getLog().debug(String.format(
-                            "Tracker: captured %s:%s:%s:%s (repo=%s, warm=%b)",
-                            artifact.getGroupId(), artifact.getArtifactId(),
-                            artifact.getVersion(), artifact.getExtension(),
-                            sourceRepo.getId(), repo instanceof LocalRepository));
+                    capturedArtifacts.putIfAbsent(key, new CapturedArtifact(artifact, event.getFile(), sourceRepo));
+                    PluginLogManager.getLog()
+                            .debug(String.format(
+                                    "Tracker: captured %s:%s:%s:%s (repo=%s, warm=%b)",
+                                    artifact.getGroupId(),
+                                    artifact.getArtifactId(),
+                                    artifact.getVersion(),
+                                    artifact.getExtension(),
+                                    sourceRepo.getId(),
+                                    repo instanceof LocalRepository));
                 }
             }
         });
 
-        PluginLogManager.getLog().debug(
-                "Tracker: mutable session created with recording RepositoryListener");
+        PluginLogManager.getLog().debug("Tracker: mutable session created with recording RepositoryListener");
         return new Tracker(mutableSession, capturedArtifacts, remoteRepos, localRepoBase);
     }
 
@@ -139,9 +140,7 @@ public class ExtraArtifactResolver {
      * @return extra {@link DependencyNode} entries, never {@code null}
      */
     public static List<DependencyNode> extractExtras(
-            Tracker tracker,
-            Set<String> alreadyRecordedGavs,
-            AbstractChecksumCalculator checksumCalculator) {
+            Tracker tracker, Set<String> alreadyRecordedGavs, AbstractChecksumCalculator checksumCalculator) {
         if (tracker == null) return Collections.emptyList();
 
         List<DependencyNode> extras = new ArrayList<>();
@@ -151,22 +150,23 @@ public class ExtraArtifactResolver {
             // GAVT-level dedup: include the artifact extension so that a conflict-loser JAR
             // (g:a:v:jar) is not suppressed just because its POM (g:a:v:pom) is already
             // recorded, and vice-versa.
-            String gavt = artifact.getGroupId() + ":" + artifact.getArtifactId()
-                    + ":" + artifact.getVersion() + ":" + artifact.getExtension();
+            String gavt = artifact.getGroupId() + ":" + artifact.getArtifactId() + ":" + artifact.getVersion() + ":"
+                    + artifact.getExtension();
             if (alreadyRecordedGavs.contains(gavt)) continue;
 
             String base = captured.sourceRepo.getUrl().endsWith("/")
-                    ? captured.sourceRepo.getUrl() : captured.sourceRepo.getUrl() + "/";
+                    ? captured.sourceRepo.getUrl()
+                    : captured.sourceRepo.getUrl() + "/";
 
             // Derive URL path from local file path relative to localRepoBase.
             String urlPath = "";
             if (captured.file != null) {
                 String absPath = captured.file.getAbsolutePath();
                 String localBase = tracker.localRepoBase.endsWith(File.separator)
-                        ? tracker.localRepoBase : tracker.localRepoBase + File.separator;
+                        ? tracker.localRepoBase
+                        : tracker.localRepoBase + File.separator;
                 if (absPath.startsWith(localBase)) {
-                    urlPath = absPath.substring(localBase.length())
-                            .replace(File.separatorChar, '/');
+                    urlPath = absPath.substring(localBase.length()).replace(File.separatorChar, '/');
                 }
             }
             String resolvedUrl = base + urlPath;
@@ -189,15 +189,18 @@ public class ExtraArtifactResolver {
                     checksum);
 
             extras.add(node);
-            PluginLogManager.getLog().debug(String.format(
-                    "Tracker: adding %s:%s:%s:%s",
-                    artifact.getGroupId(), artifact.getArtifactId(),
-                    artifact.getVersion(), artifact.getExtension()));
+            PluginLogManager.getLog()
+                    .debug(String.format(
+                            "Tracker: adding %s:%s:%s:%s",
+                            artifact.getGroupId(),
+                            artifact.getArtifactId(),
+                            artifact.getVersion(),
+                            artifact.getExtension()));
         }
 
-        PluginLogManager.getLog().info(String.format(
-                "Tracker: discovered %d extra artifact(s) not recorded in lockfile",
-                extras.size()));
+        PluginLogManager.getLog()
+                .info(String.format(
+                        "Tracker: discovered %d extra artifact(s) not recorded in lockfile", extras.size()));
         return extras;
     }
 
@@ -207,6 +210,7 @@ public class ExtraArtifactResolver {
     public static final class Tracker {
         /** Mutable session copy with the recording {@link RepositoryListener} attached. */
         private final DefaultRepositorySystemSession mutableSession;
+
         final Map<String, CapturedArtifact> capturedArtifacts;
         final List<RemoteRepository> remoteRepos;
         final String localRepoBase;
@@ -244,34 +248,45 @@ public class ExtraArtifactResolver {
                 first = false;
                 Artifact artifact = captured.artifact;
                 String base = captured.sourceRepo.getUrl().endsWith("/")
-                        ? captured.sourceRepo.getUrl() : captured.sourceRepo.getUrl() + "/";
+                        ? captured.sourceRepo.getUrl()
+                        : captured.sourceRepo.getUrl() + "/";
                 String urlPath = "";
                 if (captured.file != null) {
                     String absPath = captured.file.getAbsolutePath();
-                    String localBase = localRepoBase.endsWith(File.separator)
-                            ? localRepoBase : localRepoBase + File.separator;
+                    String localBase =
+                            localRepoBase.endsWith(File.separator) ? localRepoBase : localRepoBase + File.separator;
                     if (absPath.startsWith(localBase)) {
-                        urlPath = absPath.substring(localBase.length())
-                                .replace(File.separatorChar, '/');
+                        urlPath = absPath.substring(localBase.length()).replace(File.separatorChar, '/');
                     }
                 }
                 sb.append("  {\n");
                 sb.append("    \"url\": \"").append(esc(base + urlPath)).append("\",\n");
-                sb.append("    \"groupId\": \"").append(esc(artifact.getGroupId())).append("\",\n");
-                sb.append("    \"artifactId\": \"").append(esc(artifact.getArtifactId())).append("\",\n");
-                sb.append("    \"version\": \"").append(esc(artifact.getVersion())).append("\",\n");
-                sb.append("    \"classifier\": \"").append(esc(artifact.getClassifier())).append("\",\n");
-                sb.append("    \"extension\": \"").append(esc(artifact.getExtension())).append("\"\n");
+                sb.append("    \"groupId\": \"")
+                        .append(esc(artifact.getGroupId()))
+                        .append("\",\n");
+                sb.append("    \"artifactId\": \"")
+                        .append(esc(artifact.getArtifactId()))
+                        .append("\",\n");
+                sb.append("    \"version\": \"")
+                        .append(esc(artifact.getVersion()))
+                        .append("\",\n");
+                sb.append("    \"classifier\": \"")
+                        .append(esc(artifact.getClassifier()))
+                        .append("\",\n");
+                sb.append("    \"extension\": \"")
+                        .append(esc(artifact.getExtension()))
+                        .append("\"\n");
                 sb.append("  }");
             }
             sb.append("\n]");
             try {
                 Files.writeString(outputFile.toPath(), sb.toString());
-                PluginLogManager.getLog().info(String.format(
-                        "Tracker: wrote %d artifact(s) to %s", capturedArtifacts.size(), outputFile));
+                PluginLogManager.getLog()
+                        .info(String.format(
+                                "Tracker: wrote %d artifact(s) to %s", capturedArtifacts.size(), outputFile));
             } catch (IOException e) {
-                PluginLogManager.getLog().warn(
-                        "Tracker: could not write tracker file " + outputFile + ": " + e.getMessage());
+                PluginLogManager.getLog()
+                        .warn("Tracker: could not write tracker file " + outputFile + ": " + e.getMessage());
             }
         }
 
@@ -303,25 +318,100 @@ public class ExtraArtifactResolver {
             this.delegate = delegate;
         }
 
-        @Override public void artifactDeployed(RepositoryEvent e) { if (delegate != null) delegate.artifactDeployed(e); }
-        @Override public void artifactDeploying(RepositoryEvent e) { if (delegate != null) delegate.artifactDeploying(e); }
-        @Override public void artifactDescriptorInvalid(RepositoryEvent e) { if (delegate != null) delegate.artifactDescriptorInvalid(e); }
-        @Override public void artifactDescriptorMissing(RepositoryEvent e) { if (delegate != null) delegate.artifactDescriptorMissing(e); }
-        @Override public void artifactDownloaded(RepositoryEvent e) { if (delegate != null) delegate.artifactDownloaded(e); }
-        @Override public void artifactDownloading(RepositoryEvent e) { if (delegate != null) delegate.artifactDownloading(e); }
-        @Override public void artifactInstalled(RepositoryEvent e) { if (delegate != null) delegate.artifactInstalled(e); }
-        @Override public void artifactInstalling(RepositoryEvent e) { if (delegate != null) delegate.artifactInstalling(e); }
-        @Override public void artifactResolved(RepositoryEvent e) { if (delegate != null) delegate.artifactResolved(e); }
-        @Override public void artifactResolving(RepositoryEvent e) { if (delegate != null) delegate.artifactResolving(e); }
-        @Override public void metadataDeployed(RepositoryEvent e) { if (delegate != null) delegate.metadataDeployed(e); }
-        @Override public void metadataDeploying(RepositoryEvent e) { if (delegate != null) delegate.metadataDeploying(e); }
-        @Override public void metadataDownloaded(RepositoryEvent e) { if (delegate != null) delegate.metadataDownloaded(e); }
-        @Override public void metadataDownloading(RepositoryEvent e) { if (delegate != null) delegate.metadataDownloading(e); }
-        @Override public void metadataInstalled(RepositoryEvent e) { if (delegate != null) delegate.metadataInstalled(e); }
-        @Override public void metadataInstalling(RepositoryEvent e) { if (delegate != null) delegate.metadataInstalling(e); }
-        @Override public void metadataInvalid(RepositoryEvent e) { if (delegate != null) delegate.metadataInvalid(e); }
-        @Override public void metadataResolved(RepositoryEvent e) { if (delegate != null) delegate.metadataResolved(e); }
-        @Override public void metadataResolving(RepositoryEvent e) { if (delegate != null) delegate.metadataResolving(e); }
+        @Override
+        public void artifactDeployed(RepositoryEvent e) {
+            if (delegate != null) delegate.artifactDeployed(e);
+        }
+
+        @Override
+        public void artifactDeploying(RepositoryEvent e) {
+            if (delegate != null) delegate.artifactDeploying(e);
+        }
+
+        @Override
+        public void artifactDescriptorInvalid(RepositoryEvent e) {
+            if (delegate != null) delegate.artifactDescriptorInvalid(e);
+        }
+
+        @Override
+        public void artifactDescriptorMissing(RepositoryEvent e) {
+            if (delegate != null) delegate.artifactDescriptorMissing(e);
+        }
+
+        @Override
+        public void artifactDownloaded(RepositoryEvent e) {
+            if (delegate != null) delegate.artifactDownloaded(e);
+        }
+
+        @Override
+        public void artifactDownloading(RepositoryEvent e) {
+            if (delegate != null) delegate.artifactDownloading(e);
+        }
+
+        @Override
+        public void artifactInstalled(RepositoryEvent e) {
+            if (delegate != null) delegate.artifactInstalled(e);
+        }
+
+        @Override
+        public void artifactInstalling(RepositoryEvent e) {
+            if (delegate != null) delegate.artifactInstalling(e);
+        }
+
+        @Override
+        public void artifactResolved(RepositoryEvent e) {
+            if (delegate != null) delegate.artifactResolved(e);
+        }
+
+        @Override
+        public void artifactResolving(RepositoryEvent e) {
+            if (delegate != null) delegate.artifactResolving(e);
+        }
+
+        @Override
+        public void metadataDeployed(RepositoryEvent e) {
+            if (delegate != null) delegate.metadataDeployed(e);
+        }
+
+        @Override
+        public void metadataDeploying(RepositoryEvent e) {
+            if (delegate != null) delegate.metadataDeploying(e);
+        }
+
+        @Override
+        public void metadataDownloaded(RepositoryEvent e) {
+            if (delegate != null) delegate.metadataDownloaded(e);
+        }
+
+        @Override
+        public void metadataDownloading(RepositoryEvent e) {
+            if (delegate != null) delegate.metadataDownloading(e);
+        }
+
+        @Override
+        public void metadataInstalled(RepositoryEvent e) {
+            if (delegate != null) delegate.metadataInstalled(e);
+        }
+
+        @Override
+        public void metadataInstalling(RepositoryEvent e) {
+            if (delegate != null) delegate.metadataInstalling(e);
+        }
+
+        @Override
+        public void metadataInvalid(RepositoryEvent e) {
+            if (delegate != null) delegate.metadataInvalid(e);
+        }
+
+        @Override
+        public void metadataResolved(RepositoryEvent e) {
+            if (delegate != null) delegate.metadataResolved(e);
+        }
+
+        @Override
+        public void metadataResolving(RepositoryEvent e) {
+            if (delegate != null) delegate.metadataResolving(e);
+        }
     }
 
     // -----------------------------------------------------------------------------------------
@@ -334,8 +424,7 @@ public class ExtraArtifactResolver {
      *
      * <p>File format (Java Properties): keys are {@code artifactFileName>repoId}, value is empty.
      */
-    private static RemoteRepository findOriginRepo(
-            File artifactFile, List<RemoteRepository> remoteRepos) {
+    private static RemoteRepository findOriginRepo(File artifactFile, List<RemoteRepository> remoteRepos) {
         File trackingFile = new File(artifactFile.getParentFile(), "_remote.repositories");
         if (!trackingFile.exists()) return null;
         try {
@@ -353,9 +442,8 @@ public class ExtraArtifactResolver {
                 }
             }
         } catch (IOException e) {
-            PluginLogManager.getLog().debug(
-                    "Tracker: could not read _remote.repositories for "
-                            + artifactFile + ": " + e.getMessage());
+            PluginLogManager.getLog()
+                    .debug("Tracker: could not read _remote.repositories for " + artifactFile + ": " + e.getMessage());
         }
         return null;
     }
@@ -371,14 +459,12 @@ public class ExtraArtifactResolver {
         Set<String> seenIds = new HashSet<>();
         for (ArtifactRepository repo : project.getRemoteArtifactRepositories()) {
             if (seenIds.add(repo.getId())) {
-                repos.add(new RemoteRepository.Builder(
-                        repo.getId(), "default", repo.getUrl()).build());
+                repos.add(new RemoteRepository.Builder(repo.getId(), "default", repo.getUrl()).build());
             }
         }
         for (ArtifactRepository repo : project.getPluginArtifactRepositories()) {
             if (seenIds.add(repo.getId())) {
-                repos.add(new RemoteRepository.Builder(
-                        repo.getId(), "default", repo.getUrl()).build());
+                repos.add(new RemoteRepository.Builder(repo.getId(), "default", repo.getUrl()).build());
             }
         }
         return repos;

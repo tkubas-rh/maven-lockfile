@@ -59,8 +59,16 @@ public class DependencyNode implements Comparable<DependencyNode> {
             String checksumAlgorithm,
             String checksum) {
         DependencyNode node = new DependencyNode(
-                artifactId, groupId, version, classifier, type,
-                MavenScope.COMPILE, resolved, repositoryId, checksumAlgorithm, checksum);
+                artifactId,
+                groupId,
+                version,
+                classifier,
+                type,
+                MavenScope.COMPILE,
+                resolved,
+                repositoryId,
+                checksumAlgorithm,
+                checksum);
         node.setIncluded(true);
         return node;
     }

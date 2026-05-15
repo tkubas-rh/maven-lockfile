@@ -6,7 +6,6 @@ import io.github.chains_project.maven_lockfile.data.ArtifactId;
 import io.github.chains_project.maven_lockfile.data.ArtifactType;
 import io.github.chains_project.maven_lockfile.data.Classifier;
 import io.github.chains_project.maven_lockfile.data.GroupId;
-import io.github.chains_project.maven_lockfile.data.MavenScope;
 import io.github.chains_project.maven_lockfile.data.VersionNumber;
 import io.github.chains_project.maven_lockfile.graph.DependencyNode;
 import io.github.chains_project.maven_lockfile.reporting.PluginLogManager;
@@ -64,21 +63,19 @@ public class PlatformArtifactResolver {
         // 1. Try project property (set by os-maven-plugin or by ascopes protobuf-maven-plugin)
         String classifier = project.getProperties().getProperty(OS_DETECTED_CLASSIFIER);
         if (classifier != null && !classifier.isBlank()) {
-            PluginLogManager.getLog().info(
-                    "PlatformArtifacts: using os.detected.classifier from project properties: "
-                            + classifier);
+            PluginLogManager.getLog()
+                    .info("PlatformArtifacts: using os.detected.classifier from project properties: " + classifier);
             return classifier.trim();
         }
 
         // 2. Compute from Java system properties
         classifier = computeClassifierFromSystemProperties();
         if (classifier != null) {
-            PluginLogManager.getLog().info(
-                    "PlatformArtifacts: computed platform classifier from system properties: "
-                            + classifier);
+            PluginLogManager.getLog()
+                    .info("PlatformArtifacts: computed platform classifier from system properties: " + classifier);
         } else {
-            PluginLogManager.getLog().warn(
-                    "PlatformArtifacts: could not determine platform classifier"
+            PluginLogManager.getLog()
+                    .warn("PlatformArtifacts: could not determine platform classifier"
                             + " (os.name=" + System.getProperty("os.name")
                             + ", os.arch=" + System.getProperty("os.arch") + ")");
         }
@@ -126,16 +123,14 @@ public class PlatformArtifactResolver {
      * @return flat list of resolved nodes, one per successfully resolved spec
      */
     public static List<DependencyNode> resolve(
-            List<String> platformArtifactSpecs,
-            String osClassifier,
-            AbstractChecksumCalculator checksumCalculator) {
+            List<String> platformArtifactSpecs, String osClassifier, AbstractChecksumCalculator checksumCalculator) {
         List<DependencyNode> result = new ArrayList<>();
 
         for (String spec : platformArtifactSpecs) {
             String[] parts = spec.split(":");
             if (parts.length != 4) {
-                PluginLogManager.getLog().warn(
-                        "PlatformArtifacts: ignoring malformed spec (expected groupId:artifactId:type:version): "
+                PluginLogManager.getLog()
+                        .warn("PlatformArtifacts: ignoring malformed spec (expected groupId:artifactId:type:version): "
                                 + spec);
                 continue;
             }
@@ -144,22 +139,23 @@ public class PlatformArtifactResolver {
             String type = parts[2];
             String version = parts[3];
 
-            PluginLogManager.getLog().info(String.format(
-                    "PlatformArtifacts: resolving %s:%s:%s:%s:%s",
-                    groupId, artifactId, type, osClassifier, version));
+            PluginLogManager.getLog()
+                    .info(String.format(
+                            "PlatformArtifacts: resolving %s:%s:%s:%s:%s",
+                            groupId, artifactId, type, osClassifier, version));
 
             Artifact artifact = new DefaultArtifact(
-                    groupId, artifactId, version,
-                    "compile", type, osClassifier,
-                    new DefaultArtifactHandler(type));
+                    groupId, artifactId, version, "compile", type, osClassifier, new DefaultArtifactHandler(type));
 
             RepositoryInformation repoInfo = checksumCalculator.getPluginResolvedField(artifact);
-            if (repoInfo == null || repoInfo.equals(RepositoryInformation.Unresolved())
+            if (repoInfo == null
+                    || repoInfo.equals(RepositoryInformation.Unresolved())
                     || repoInfo.getResolvedUrl() == null
                     || repoInfo.getResolvedUrl().getValue() == null) {
-                PluginLogManager.getLog().warn(String.format(
-                        "PlatformArtifacts: %s:%s:%s:%s:%s — not found in any repository",
-                        groupId, artifactId, type, osClassifier, version));
+                PluginLogManager.getLog()
+                        .warn(String.format(
+                                "PlatformArtifacts: %s:%s:%s:%s:%s — not found in any repository",
+                                groupId, artifactId, type, osClassifier, version));
                 continue;
             }
 
@@ -175,10 +171,15 @@ public class PlatformArtifactResolver {
                     checksumCalculator.getChecksumAlgorithm(),
                     checksum));
 
-            PluginLogManager.getLog().info(String.format(
-                    "PlatformArtifacts: resolved %s:%s:%s:%s:%s -> %s",
-                    groupId, artifactId, type, osClassifier, version,
-                    repoInfo.getResolvedUrl().getValue()));
+            PluginLogManager.getLog()
+                    .info(String.format(
+                            "PlatformArtifacts: resolved %s:%s:%s:%s:%s -> %s",
+                            groupId,
+                            artifactId,
+                            type,
+                            osClassifier,
+                            version,
+                            repoInfo.getResolvedUrl().getValue()));
         }
 
         return result;

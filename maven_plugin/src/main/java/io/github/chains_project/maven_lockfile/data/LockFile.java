@@ -64,8 +64,18 @@ public class LockFile {
             Set<MavenExtension> mavenExtensions,
             MetaData metaData,
             Set<Pom> boms) {
-        this(groupId, name, versionNumber, pom, dependencies, mavenPlugins, mavenExtensions,
-                metaData, boms, Collections.emptyList(), Collections.emptyList());
+        this(
+                groupId,
+                name,
+                versionNumber,
+                pom,
+                dependencies,
+                mavenPlugins,
+                mavenExtensions,
+                metaData,
+                boms,
+                Collections.emptyList(),
+                Collections.emptyList());
     }
 
     public LockFile(
@@ -155,6 +165,7 @@ public class LockFile {
     public Set<MavenExtension> getMavenExtensions() {
         return nullToEmpty(mavenExtensions);
     }
+
     public List<P2DependencyNode> getP2Dependencies() {
         return p2Dependencies == null ? Collections.emptyList() : p2Dependencies;
     }

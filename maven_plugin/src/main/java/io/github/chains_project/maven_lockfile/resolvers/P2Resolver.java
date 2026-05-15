@@ -77,8 +77,7 @@ public class P2Resolver {
      * managed by the Tycho Maven plugin).
      */
     public static boolean isTychoProject(MavenProject project) {
-        return project.getBuildPlugins().stream()
-                .anyMatch(p -> TYCHO_PLUGIN_ARTIFACT_ID.equals(p.getArtifactId()));
+        return project.getBuildPlugins().stream().anyMatch(p -> TYCHO_PLUGIN_ARTIFACT_ID.equals(p.getArtifactId()));
     }
 
     /**
@@ -92,8 +91,8 @@ public class P2Resolver {
         List<P2DependencyNode> artifacts = new ArrayList<>();
         List<P2Repository> repositories = new ArrayList<>();
 
-        File[] targetFiles = project.getBasedir().listFiles(
-                f -> f.isFile() && f.getName().endsWith(".target"));
+        File[] targetFiles =
+                project.getBasedir().listFiles(f -> f.isFile() && f.getName().endsWith(".target"));
         if (targetFiles == null || targetFiles.length == 0) {
             PluginLogManager.getLog().info("No .target files found in " + project.getBasedir());
             return new P2ResolverResult(artifacts, repositories);
@@ -111,8 +110,8 @@ public class P2Resolver {
                     }
                 }
             } catch (Exception e) {
-                PluginLogManager.getLog().warn("Failed to resolve P2 deps from "
-                        + targetFile.getName() + ": " + e.getMessage());
+                PluginLogManager.getLog()
+                        .warn("Failed to resolve P2 deps from " + targetFile.getName() + ": " + e.getMessage());
             }
         }
         return new P2ResolverResult(artifacts, repositories);
@@ -172,13 +171,12 @@ public class P2Resolver {
      * Entry point for resolving a P2 repository — handles both simple repos
      * (content.jar) and composite repos (compositeContent.jar) transparently.
      */
-    private static P2ResolverResult resolveFromRepository(
-            String repoUrl, Set<String> requiredIuIds) throws Exception {
+    private static P2ResolverResult resolveFromRepository(String repoUrl, Set<String> requiredIuIds) throws Exception {
         return resolveFromRepository(repoUrl, requiredIuIds, 0);
     }
 
-    private static P2ResolverResult resolveFromRepository(
-            String repoUrl, Set<String> requiredIuIds, int depth) throws Exception {
+    private static P2ResolverResult resolveFromRepository(String repoUrl, Set<String> requiredIuIds, int depth)
+            throws Exception {
 
         String base = repoUrl.endsWith("/") ? repoUrl : repoUrl + "/";
         PluginLogManager.getLog().info("Fetching P2 metadata from: " + base);
@@ -206,8 +204,7 @@ public class P2Resolver {
      * Resolves a simple (non-composite) P2 repository that has content.jar + artifacts.jar.
      */
     private static P2ResolverResult resolveSimpleRepository(
-            String base, String repoUrl, Path contentJarTmp, Set<String> requiredIuIds)
-            throws Exception {
+            String base, String repoUrl, Path contentJarTmp, Set<String> requiredIuIds) throws Exception {
 
         String contentJarUrl = base + "content.jar";
         String artifactsJarUrl = base + "artifacts.jar";
@@ -219,8 +216,7 @@ public class P2Resolver {
 
         String localPath = "p2/" + slugify(repoUrl);
         P2Repository p2Repo = new P2Repository(
-                repoUrl, contentJarUrl, contentJarChecksum,
-                artifactsJarUrl, artifactsJarChecksum, localPath);
+                repoUrl, contentJarUrl, contentJarChecksum, artifactsJarUrl, artifactsJarChecksum, localPath);
 
         Map<String, IuMetadata> iuGraph = parseContentMetadata(contentJarTmp);
         Files.deleteIfExists(contentJarTmp);
@@ -254,12 +250,16 @@ public class P2Resolver {
 
             PluginLogManager.getLog().debug("Resolved P2 artifact: " + iuId + ":" + artifact.version);
             nodes.add(new P2DependencyNode(
-                    artifact.classifier, iuId, artifact.version,
-                    downloadUrl, repoUrl, mirrorPath,
-                    artifact.p2ChecksumAlgorithm, artifact.p2Checksum));
+                    artifact.classifier,
+                    iuId,
+                    artifact.version,
+                    downloadUrl,
+                    repoUrl,
+                    mirrorPath,
+                    artifact.p2ChecksumAlgorithm,
+                    artifact.p2Checksum));
         }
-        PluginLogManager.getLog().info(String.format(
-                "Resolved %d P2 artifact(s) from %s", nodes.size(), repoUrl));
+        PluginLogManager.getLog().info(String.format("Resolved %d P2 artifact(s) from %s", nodes.size(), repoUrl));
         return new P2ResolverResult(nodes, List.of(p2Repo));
     }
 
@@ -268,8 +268,7 @@ public class P2Resolver {
      * recursively resolving each child.
      */
     private static P2ResolverResult resolveCompositeRepository(
-            String base, Path compositeJarTmp, Set<String> requiredIuIds, int depth)
-            throws Exception {
+            String base, Path compositeJarTmp, Set<String> requiredIuIds, int depth) throws Exception {
 
         PluginLogManager.getLog().info("Resolving composite P2 repo: " + base);
         List<String> children = parseCompositeChildren(compositeJarTmp, base);
@@ -280,13 +279,11 @@ public class P2Resolver {
 
         for (String childUrl : children) {
             try {
-                P2ResolverResult childResult =
-                        resolveFromRepository(childUrl, requiredIuIds, depth + 1);
+                P2ResolverResult childResult = resolveFromRepository(childUrl, requiredIuIds, depth + 1);
                 allArtifacts.addAll(childResult.getArtifacts());
                 allRepos.addAll(childResult.getRepositories());
             } catch (Exception e) {
-                PluginLogManager.getLog().warn(
-                        "Failed to resolve composite child " + childUrl + ": " + e.getMessage());
+                PluginLogManager.getLog().warn("Failed to resolve composite child " + childUrl + ": " + e.getMessage());
             }
         }
         return new P2ResolverResult(allArtifacts, allRepos);
@@ -296,8 +293,7 @@ public class P2Resolver {
      * Parses compositeContent.jar and returns the resolved child repository URLs.
      * Child locations may be relative (resolved against {@code base}) or absolute.
      */
-    private static List<String> parseCompositeChildren(Path compositeJarTmp, String base)
-            throws Exception {
+    private static List<String> parseCompositeChildren(Path compositeJarTmp, String base) throws Exception {
         Document doc = parseP2Xml(compositeJarTmp, "compositeContent.xml");
         List<String> children = new ArrayList<>();
         NodeList childNodes = doc.getElementsByTagName("child");
@@ -305,8 +301,7 @@ public class P2Resolver {
             String location = ((Element) childNodes.item(i)).getAttribute("location");
             if (location == null || location.isEmpty()) continue;
             String childUrl;
-            if (location.startsWith("http://") || location.startsWith("https://")
-                    || location.startsWith("file://")) {
+            if (location.startsWith("http://") || location.startsWith("https://") || location.startsWith("file://")) {
                 childUrl = location;
             } else {
                 // Relative location — resolve against base URL
@@ -315,8 +310,7 @@ public class P2Resolver {
             PluginLogManager.getLog().debug("Composite child: " + childUrl);
             children.add(childUrl);
         }
-        PluginLogManager.getLog().info(String.format(
-                "Composite repo %s has %d child(ren)", base, children.size()));
+        PluginLogManager.getLog().info(String.format("Composite repo %s has %d child(ren)", base, children.size()));
         return children;
     }
 
@@ -519,8 +513,13 @@ public class P2Resolver {
         final String p2Checksum;
         final String p2ChecksumAlgorithm;
 
-        ArtifactMetadata(String id, String version, String classifier, String extension,
-                String p2Checksum, String p2ChecksumAlgorithm) {
+        ArtifactMetadata(
+                String id,
+                String version,
+                String classifier,
+                String extension,
+                String p2Checksum,
+                String p2ChecksumAlgorithm) {
             this.id = id;
             this.version = version;
             this.classifier = classifier;

@@ -26,9 +26,8 @@ class ExtraArtifactResolverTest {
     @Test
     void extractExtras_returnsEmptyListWhenTrackerIsNullRegardlessOfAlreadyRecorded() {
         // The alreadyRecorded set does not matter when tracker is null.
-        var recorded = Set.of(
-                "com.google.protobuf:protoc:3.25.5:exe",
-                "org.junit.jupiter:junit-jupiter-api:5.10.2:jar");
+        var recorded =
+                Set.of("com.google.protobuf:protoc:3.25.5:exe", "org.junit.jupiter:junit-jupiter-api:5.10.2:jar");
 
         var result = ExtraArtifactResolver.extractExtras(null, recorded, null);
 

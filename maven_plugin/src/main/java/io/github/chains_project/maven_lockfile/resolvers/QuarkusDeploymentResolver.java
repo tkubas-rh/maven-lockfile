@@ -106,23 +106,22 @@ public class QuarkusDeploymentResolver extends SpecialPluginResolver {
                 .info(String.format("Quarkus: discovered %d primary deployment artifact(s)", primaryDeps.size()));
 
         String localRepoBase = session.getLocalRepository().getBasedir();
-        int extraCount = discoverTransitiveDeploymentDeps(
-                primaryDeps, localRepoBase, quarkusVersion, deploymentDeps, seen);
+        int extraCount =
+                discoverTransitiveDeploymentDeps(primaryDeps, localRepoBase, quarkusVersion, deploymentDeps, seen);
         PluginLogManager.getLog()
                 .info(String.format("Quarkus: added %d extra artifact(s) from deployment POM scanning", extraCount));
 
         return deploymentDeps;
     }
 
-    private static void addPlatformProperties(
-            String quarkusVersion, List<Dependency> out, Set<String> seen) {
+    private static void addPlatformProperties(String quarkusVersion, List<Dependency> out, Set<String> seen) {
         if (quarkusVersion == null) {
             PluginLogManager.getLog()
                     .warn("Quarkus: could not determine Quarkus version — skipping platform-properties");
             return;
         }
-        Dependency platformProps = createDependency(
-                PLATFORM_PROPERTIES_GROUP, PLATFORM_PROPERTIES_ARTIFACT, quarkusVersion);
+        Dependency platformProps =
+                createDependency(PLATFORM_PROPERTIES_GROUP, PLATFORM_PROPERTIES_ARTIFACT, quarkusVersion);
         platformProps.setType("properties");
         addIfAbsent(out, seen, platformProps);
         PluginLogManager.getLog()
@@ -163,15 +162,17 @@ public class QuarkusDeploymentResolver extends SpecialPluginResolver {
             }
             return createDependency(parts[0], parts[1], parts[2]);
         } catch (IOException e) {
-            PluginLogManager.getLog()
-                    .debug("Quarkus: could not read " + file.getName() + ": " + e.getMessage());
+            PluginLogManager.getLog().debug("Quarkus: could not read " + file.getName() + ": " + e.getMessage());
             return null;
         }
     }
 
     private static int discoverTransitiveDeploymentDeps(
-            List<Dependency> primaryDeps, String localRepoBase, String quarkusVersion,
-            List<Dependency> out, Set<String> seen) {
+            List<Dependency> primaryDeps,
+            String localRepoBase,
+            String quarkusVersion,
+            List<Dependency> out,
+            Set<String> seen) {
         int extraCount = 0;
         Set<String> scanned = new HashSet<>();
         List<Dependency> toScan = new ArrayList<>(primaryDeps);
@@ -216,8 +217,7 @@ public class QuarkusDeploymentResolver extends SpecialPluginResolver {
             return extractDeploymentDeps(doc, deploymentDep, platformVersion);
         } catch (Exception e) {
             PluginLogManager.getLog()
-                    .debug("Quarkus: could not parse POM for " + deploymentDep.getArtifactId()
-                            + ": " + e.getMessage());
+                    .debug("Quarkus: could not parse POM for " + deploymentDep.getArtifactId() + ": " + e.getMessage());
             return List.of();
         }
     }
@@ -233,8 +233,7 @@ public class QuarkusDeploymentResolver extends SpecialPluginResolver {
         List<Dependency> result = new ArrayList<>();
         NodeList depNodes = doc.getElementsByTagName("dependency");
         for (int i = 0; i < depNodes.getLength(); i++) {
-            result.addAll(processPomDependency(
-                    (Element) depNodes.item(i), deploymentDep, platformVersion));
+            result.addAll(processPomDependency((Element) depNodes.item(i), deploymentDep, platformVersion));
         }
         return result;
     }
@@ -251,12 +250,11 @@ public class QuarkusDeploymentResolver extends SpecialPluginResolver {
 
         if (isVersionless && !groupId.startsWith("io.quarkus")) return List.of();
 
-        String version = resolveEffectiveVersion(
-                rawVersion, isVersionless, platformVersion, deploymentDep.getVersion());
+        String version =
+                resolveEffectiveVersion(rawVersion, isVersionless, platformVersion, deploymentDep.getVersion());
 
         if (isOptional && artifactId.endsWith(DEPLOYMENT_SUFFIX)) {
-            String runtimeArtifactId =
-                    artifactId.substring(0, artifactId.length() - DEPLOYMENT_SUFFIX.length());
+            String runtimeArtifactId = artifactId.substring(0, artifactId.length() - DEPLOYMENT_SUFFIX.length());
             return List.of(
                     createDependency(groupId, artifactId, version),
                     createDependency(groupId, runtimeArtifactId, version));
